@@ -420,7 +420,7 @@ const AddStudentForm: React.FC = () => {
         </div>
         <div>
           <label htmlFor="securityMoney" className="block text-sm font-medium text-gray-700 mb-1">
-            Security Money
+            Regestration Fee
           </label>
           <input
             type="number"

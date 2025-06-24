@@ -251,7 +251,7 @@ const CollectionDue: React.FC = () => {
                 <p className="text-xl font-bold text-green-600">₹{totalOnline.toFixed(2)}</p>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-sm border">
-                <h3 className="text-sm font-medium text-gray-500">Total Security Money</h3>
+                <h3 className="text-sm font-medium text-gray-500">Total Regestration Fee</h3>
                 <p className="text-xl font-bold text-blue-600">₹{totalSecurityMoney.toFixed(2)}</p>
               </div>
             </motion.div>
@@ -262,11 +262,11 @@ const CollectionDue: React.FC = () => {
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Name</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Branch</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shift</th>
+                    {/* <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shift</th> */}
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Fee</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cash</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Online</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Security Money</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reg. Fee</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount Paid</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Amount</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remark</th>
@@ -291,14 +291,14 @@ const CollectionDue: React.FC = () => {
                       >
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{collection.name}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{collection.branchName || 'N/A'}</td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{collection.shiftTitle || 'N/A'}</td>
+                        {/* <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{collection.shiftTitle || 'N/A'}</td> */}
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">₹{collection.totalFee.toFixed(2)}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">₹{collection.cash.toFixed(2)}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">₹{collection.online.toFixed(2)}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">₹{collection.securityMoney.toFixed(2)}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-green-600">₹{collection.amountPaid.toFixed(2)}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-red-600">₹{collection.dueAmount.toFixed(2)}</td>
-                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{collection.remark || 'N/A'}</td>
+                        <td className="px-4 py-4 whitespace-wrap text-sm text-gray-800">{collection.remark || 'N/A'}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">
                           {collection.createdAt ? new Date(collection.createdAt).toLocaleDateString() : 'N/A'}
                         </td>

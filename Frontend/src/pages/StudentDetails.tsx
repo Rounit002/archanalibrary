@@ -291,7 +291,7 @@ const StudentDetails: React.FC = () => {
                     </p>
                   </div>
                   <div>
-                    <h2 className="text-lg font-medium">Security Money</h2>
+                    <h2 className="text-lg font-medium">Regestration Fee</h2>
                     <p className="text-gray-600">
                       {student.securityMoney !== undefined && student.securityMoney !== null ? `Rs. ${student.securityMoney.toFixed(2)}` : 'N/A'}
                     </p>

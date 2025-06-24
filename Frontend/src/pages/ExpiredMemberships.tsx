@@ -444,7 +444,7 @@ const ExpiredMemberships = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm">Security Money</label>
+                <label className="block text-sm">Regestration Fee</label>
                 <input
                   className="w-full border rounded px-2 py-1"
                   type="number"
