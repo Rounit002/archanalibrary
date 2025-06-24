@@ -1,7 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const session = require('express-session');
-const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
 const path = require('path');
 const cors = require('cors');
@@ -140,23 +139,23 @@ if (typeof checkAdminOrStaff !== 'function') {
   process.exit(1);
 }
 
-const authRoutes = authRouterFactory(pool, bcrypt);
+const authRoutes = authRouterFactory(pool);
 
-const initializeRoute = (filePath, poolInstance, bcryptInstance) => {
+const initializeRoute = (filePath, poolInstance) => {
   try {
     const routeFactory = require(filePath);
     if (typeof routeFactory !== 'function') {
       logger.error(`FATAL: Route factory in ${filePath} is not a function. Exiting.`);
       process.exit(1);
     }
-    return filePath.includes('users') ? routeFactory(poolInstance, bcryptInstance) : routeFactory(poolInstance);
+    return routeFactory(poolInstance);
   } catch (e) {
     logger.error(`FATAL: Failed to require or initialize route from ${filePath}: ${e.message} ${e.stack}`);
     process.exit(1);
   }
 };
 
-const userRoutes = initializeRoute('./routes/users', pool, bcrypt);
+const userRoutes = initializeRoute('./routes/users', pool);
 const studentRoutes = initializeRoute('./routes/students', pool);
 const scheduleRoutes = initializeRoute('./routes/schedules', pool);
 const seatsRoutes = initializeRoute('./routes/seats', pool);
@@ -290,10 +289,10 @@ async function createDefaultAdmin() {
 
     const userCountResult = await pool.query("SELECT COUNT(*) FROM users WHERE role = 'admin'");
     if (parseInt(userCountResult.rows[0].count) === 0) {
-      const hashedPassword = await bcrypt.hash(process.env.DEFAULT_ADMIN_PASSWORD || 'admin', 10);
+      const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin';
       await pool.query(
         'INSERT INTO users (username, password, role, full_name, email) VALUES ($1, $2, $3, $4, $5)',
-        [process.env.DEFAULT_ADMIN_USERNAME || 'admin', hashedPassword, 'admin', 'Default Admin', 'admin@example.com']
+        [process.env.DEFAULT_ADMIN_USERNAME || 'admin', defaultPassword, 'admin', 'Default Admin', 'admin@example.com']
       );
       logger.info('Default admin user created.');
     } else {

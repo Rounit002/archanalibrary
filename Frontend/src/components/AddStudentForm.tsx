@@ -44,7 +44,7 @@ interface FormData {
   membershipStart: string;
   membershipEnd: string;
   seatId: number | null;
-  shiftId: number | null;
+  shiftIds: number[];
   totalFee: string;
   cash: string;
   online: string;
@@ -65,7 +65,7 @@ const AddStudentForm: React.FC = () => {
     membershipStart: '',
     membershipEnd: '',
     seatId: null,
-    shiftId: null,
+    shiftIds: [],
     totalFee: '',
     cash: '',
     online: '',
@@ -113,6 +113,7 @@ const AddStudentForm: React.FC = () => {
         }
       } else {
         setSeats([]);
+        setFormData(prev => ({ ...prev, seatId: null, shiftIds: [] }));
       }
     };
     fetchSeats();
@@ -132,24 +133,37 @@ const AddStudentForm: React.FC = () => {
           setLoadingShifts(false);
         }
       } else {
-        setAvailableShifts([]);
+        // For seatId: null, allow all shifts
+        setAvailableShifts(shifts);
+        setLoadingShifts(false);
       }
     };
     fetchAvailableShifts();
-  }, [formData.seatId]);
+  }, [formData.seatId, shifts]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSelectChange = (name: keyof FormData, option: SelectOption | ShiftOption | null) => {
-    if (name === 'shiftId') {
-      const opt = option as ShiftOption | null;
-      setFormData(prev => ({ ...prev, [name]: opt ? opt.value : null }));
+  const handleSelectChange = (
+    name: keyof FormData,
+    option: SelectOption | ShiftOption[] | null
+  ) => {
+    if (name === 'shiftIds') {
+      const opts = option as ShiftOption[] | null;
+      setFormData(prev => ({
+        ...prev,
+        [name]: opts ? opts.map(opt => opt.value) : [],
+      }));
     } else {
       const opt = option as SelectOption | null;
-      setFormData(prev => ({ ...prev, [name]: opt ? opt.value : null }));
+      setFormData(prev => ({
+        ...prev,
+        [name]: opt ? opt.value : null,
+        ...(name === 'branchId' ? { seatId: null, shiftIds: [] } : {}),
+        ...(name === 'seatId' ? { shiftIds: [] } : {}),
+      }));
     }
   };
 
@@ -180,14 +194,11 @@ const AddStudentForm: React.FC = () => {
 
   const shiftOptions: ShiftOption[] = shifts.map(shift => ({
     value: shift.id,
-    label: `${shift.title} (${shift.time} on ${shift.eventDate}) ${
-      availableShifts.some(s => s.id === shift.id) ? '(Available)' : '(Assigned)'
-    }`,
-    isDisabled: !availableShifts.some(s => s.id === shift.id),
+    label: `${shift.title} - ${shift.description || 'No description'}`,
+    isDisabled: formData.seatId !== null && !availableShifts.some(s => s.id === shift.id),
   }));
 
   const handleSubmit = async () => {
-    // Validate required fields (excluding seatId and shiftId as they can be optional)
     if (
       !formData.name ||
       !formData.phone ||
@@ -196,12 +207,6 @@ const AddStudentForm: React.FC = () => {
       !formData.membershipEnd
     ) {
       toast.error('Please fill in all required fields (Name, Phone, Branch, Membership Start, Membership End)');
-      return;
-    }
-
-    // If seatId is provided, shiftId must also be provided
-    if (formData.seatId !== null && formData.shiftId === null) {
-      toast.error('Please select a shift if a seat is selected');
       return;
     }
 
@@ -219,18 +224,18 @@ const AddStudentForm: React.FC = () => {
         email: formData.email,
         phone: formData.phone,
         address: formData.address.trim() || '',
-        branchId: formData.branchId!,
-        membershipStart: formData.membershipStart,
-        membershipEnd: formData.membershipEnd,
-        seatId: formData.seatId !== null ? formData.seatId : undefined, // Pass undefined if null
-        shiftIds: formData.shiftId !== null ? [formData.shiftId] : [], // Pass empty array if shiftId is null
-        totalFee: formData.totalFee ? parseFloat(formData.totalFee) : 0,
-        amountPaid: (parseFloat(formData.cash) || 0) + (parseFloat(formData.online) || 0),
+        branch_id: formData.branchId!,
+        membership_start: formData.membershipStart,
+        membership_end: formData.membershipEnd,
+        seat_id: formData.seatId,
+        shift_ids: formData.shiftIds,
+        total_fee: formData.totalFee ? parseFloat(formData.totalFee) : 0,
+        amount_paid: (parseFloat(formData.cash) || 0) + (parseFloat(formData.online) || 0),
         cash: parseFloat(formData.cash) || 0,
         online: parseFloat(formData.online) || 0,
-        securityMoney: parseFloat(formData.securityMoney) || 0,
+        security_money: parseFloat(formData.securityMoney) || 0,
         remark: formData.remark || '',
-        profileImageUrl: imageUrl,
+        profile_image_url: imageUrl,
       };
 
       await api.addStudent(studentData);
@@ -343,7 +348,7 @@ const AddStudentForm: React.FC = () => {
         </div>
         <div>
           <label htmlFor="seatId" className="block text-sm font-medium text-gray-700 mb-1">
-            Select Seat (select seat first)
+            Select Seat
           </label>
           <Select
             options={seatOptions}
@@ -355,15 +360,16 @@ const AddStudentForm: React.FC = () => {
           />
         </div>
         <div>
-          <label htmlFor="shiftId" className="block text-sm font-medium text-gray-700 mb-1">
-            Select Shift (Required if Seat is Selected)
+          <label htmlFor="shiftIds" className="block text-sm font-medium text-gray-700 mb-1">
+            Select Shifts
           </label>
           <Select
+            isMulti
             options={shiftOptions}
-            value={shiftOptions.find(option => option.value === formData.shiftId) || null}
-            onChange={(option: ShiftOption | null) => handleSelectChange('shiftId', option)}
+            value={shiftOptions.filter(option => formData.shiftIds.includes(option.value))}
+            onChange={(option: ShiftOption[] | null) => handleSelectChange('shiftIds', option)}
             isLoading={loadingShifts}
-            placeholder="Select a shift"
+            placeholder="Select shifts"
             className="w-full"
           />
         </div>

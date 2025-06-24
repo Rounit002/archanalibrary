@@ -28,9 +28,9 @@ interface Student {
   profileImageUrl?: string | null;
   createdAt: string;
   assignments?: Array<{
-    seatId: number;
+    seatId: number | null;
     shiftId: number;
-    seatNumber: string;
+    seatNumber: string | null;
     shiftTitle: string;
   }>;
 }
@@ -69,7 +69,7 @@ interface FormData {
   branchId: number | null;
   membershipStart: string;
   membershipEnd: string;
-  shiftId: string;
+  shiftIds: number[];
   seatId: number | null;
   totalFee: string;
   cash: string;
@@ -107,7 +107,7 @@ const EditStudentForm: React.FC = () => {
     branchId: null,
     membershipStart: '',
     membershipEnd: '',
-    shiftId: '',
+    shiftIds: [],
     seatId: null,
     totalFee: '',
     cash: '',
@@ -118,8 +118,8 @@ const EditStudentForm: React.FC = () => {
   const [shifts, setShifts] = useState<Schedule[]>([]);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [loadingSeats, setLoadingSeats] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingSeats, setLoadingSeats] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Parse id to number
@@ -136,11 +136,9 @@ const EditStudentForm: React.FC = () => {
           api.getSchedules(),
           api.getBranches(),
         ]);
-        console.log('Fetched student data:', studentResponse);
-        const shiftId = studentResponse.assignments?.[0]?.shiftId?.toString() || '';
-        const validShift = shiftsResponse.schedules.find(
-          (shift: Schedule) => shift.id === parseInt(shiftId, 10)
-        );
+        const shiftIds = studentResponse.assignments
+          ? [...new Set(studentResponse.assignments.map((a) => a.shiftId))]
+          : [];
         setFormData({
           name: studentResponse.name || '',
           email: studentResponse.email || '',
@@ -149,11 +147,11 @@ const EditStudentForm: React.FC = () => {
           branchId: studentResponse.branchId || null,
           membershipStart: studentResponse.membershipStart || '',
           membershipEnd: studentResponse.membershipEnd || '',
-          shiftId: validShift ? shiftId : '',
+          shiftIds: shiftIds.length > 0 ? shiftIds : [],
           seatId: studentResponse.assignments?.[0]?.seatId || null,
           totalFee: studentResponse.totalFee ? studentResponse.totalFee.toString() : '',
-          cash: studentResponse.cash ? studentResponse.cash.toString() : '',
-          online: studentResponse.online ? studentResponse.online.toString() : '',
+          cash: studentResponse.cash ? studentResponse.cash.toString() : '0',
+          online: studentResponse.online ? studentResponse.online.toString() : '0',
           securityMoney: studentResponse.securityMoney
             ? studentResponse.securityMoney.toString()
             : '0',
@@ -177,18 +175,31 @@ const EditStudentForm: React.FC = () => {
 
   useEffect(() => {
     const fetchSeats = async () => {
-      const shiftId = parseInt(formData.shiftId, 10);
-      if (shiftId && !isNaN(shiftId)) {
+      if (formData.shiftIds.length > 0) {
         setLoadingSeats(true);
         try {
-          const seatsResponse = await api.getSeats({ shiftId });
-          const allSeats: Seat[] = seatsResponse.seats;
-          // Filter seats for the selected shift that are not assigned or assigned to the current student
-          const availableSeats = allSeats.filter((seat) => {
-            const shift = seat.shifts.find((s) => s.shiftId === shiftId);
-            return shift && (!shift.isAssigned || seat.id === formData.seatId);
-          });
+          const seatPromises = formData.shiftIds.map((shiftId) =>
+            api.getSeats({ shiftId })
+          );
+          const seatResponses = await Promise.all(seatPromises);
+          const allSeatsPerShift = seatResponses.map((res) => res.seats as Seat[]);
+
+          // Find seats available for all selected shifts
+          const availableSeats = allSeatsPerShift.reduce((commonSeats, currentSeats) => {
+            return commonSeats.filter((seat) =>
+              currentSeats.some((cs) => {
+                const shift = cs.shifts.find((s) => s.shiftId === seat.shifts[0].shiftId);
+                return cs.id === seat.id && (!shift?.isAssigned || seat.id === formData.seatId);
+              })
+            );
+          }, allSeatsPerShift[0] || []);
+
           setSeats(availableSeats);
+
+          // Reset seatId if it's not in the available seats
+          if (formData.seatId && !availableSeats.some((seat) => seat.id === formData.seatId)) {
+            setFormData((prev) => ({ ...prev, seatId: null }));
+          }
         } catch (error: any) {
           console.error('Failed to fetch seats:', error);
           const errorMessage =
@@ -199,10 +210,11 @@ const EditStudentForm: React.FC = () => {
         }
       } else {
         setSeats([]);
+        setFormData((prev) => ({ ...prev, seatId: null }));
       }
     };
     fetchSeats();
-  }, [formData.shiftId, formData.seatId]);
+  }, [formData.shiftIds, formData.seatId]);
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -212,6 +224,11 @@ const EditStudentForm: React.FC = () => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
+
+  const shiftOptions = shifts.map((shift) => ({
+    value: shift.id,
+    label: `${shift.title} at ${shift.time} (${shift.eventDate})`,
+  }));
 
   const seatOptions = [
     { value: null, label: 'None' },
@@ -284,10 +301,18 @@ const EditStudentForm: React.FC = () => {
       return;
     }
 
-    const shiftId = formData.shiftId ? parseInt(formData.shiftId, 10) : null;
-    if (!shiftId || !shifts.some((shift) => shift.id === shiftId)) {
-      toast.error('Please select a valid shift');
+    if (formData.shiftIds.length === 0) {
+      toast.error('Please select at least one shift');
       return;
+    }
+
+    // Validate seatId compatibility with shiftIds
+    if (formData.seatId) {
+      const seatAvailable = seats.some((seat) => seat.id === formData.seatId);
+      if (!seatAvailable) {
+        toast.error('Selected seat is not available for all chosen shifts');
+        return;
+      }
     }
 
     try {
@@ -302,7 +327,7 @@ const EditStudentForm: React.FC = () => {
         membershipEnd: formData.membershipEnd,
         totalFee: totalFeeValue,
         amountPaid: amountPaidValue,
-        shiftIds: [shiftId],
+        shiftIds: formData.shiftIds,
         seatId: formData.seatId,
         cash: cashValue,
         online: onlineValue,
@@ -495,25 +520,29 @@ const EditStudentForm: React.FC = () => {
           </div>
           <div>
             <label
-              htmlFor="shiftId"
+              htmlFor="shiftIds"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
-              Select Shift
+              Select Shifts
             </label>
-            <select
-              id="shiftId"
-              name="shiftId"
-              value={formData.shiftId}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300"
-            >
-              <option value="">-- Select Shift --</option>
-              {shifts.map((shift) => (
-                <option key={shift.id} value={shift.id}>
-                  {shift.title} at {shift.time} ({shift.eventDate})
-                </option>
-              ))}
-            </select>
+            <Select
+              id="shiftIds"
+              name="shiftIds"
+              options={shiftOptions}
+              value={shiftOptions.filter((option) =>
+                formData.shiftIds.includes(option.value)
+              )}
+              onChange={(selected) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  shiftIds: selected ? selected.map((s) => s.value) : [],
+                }))
+              }
+              isMulti
+              isSearchable
+              placeholder="Select shifts"
+              className="w-full"
+            />
           </div>
           <div>
             <label

@@ -6,6 +6,7 @@ import { ArrowLeft, Trash2, PlusCircle, Loader2 } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import Navbar from '../components/Navbar';
 import { useAuth } from '../context/AuthContext';
+import Select from 'react-select';
 
 interface Seat {
   id: number;
@@ -27,18 +28,29 @@ interface Schedule {
   eventDate: string;
 }
 
-const SeatsPage = () => {
+interface Branch {
+  id: number;
+  name: string;
+}
+
+interface SelectOption {
+  value: number | null;
+  label: string;
+}
+
+const SeatsPage: React.FC = () => {
   const [seats, setSeats] = useState<Seat[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+  const [selectedShiftId, setSelectedShiftId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newSeatNumbers, setNewSeatNumbers] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [branches, setBranches] = useState<{ id: number; name: string }[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
-  const navigate = useNavigate();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -59,7 +71,10 @@ const SeatsPage = () => {
     const maxRetries = 2;
     try {
       setLoading(true);
-      const response = await api.getSeats(selectedBranchId ? { branchId: selectedBranchId } : undefined);
+      const params: { branchId?: number; shiftId?: number } = {};
+      if (selectedBranchId) params.branchId = selectedBranchId;
+      if (selectedShiftId) params.shiftId = selectedShiftId;
+      const response = await api.getSeats(params);
       if (response.seats && Array.isArray(response.seats)) {
         setSeats(response.seats.sort((a, b) => parseInt(a.seatNumber) - parseInt(b.seatNumber)));
         setError(null);
@@ -83,7 +98,6 @@ const SeatsPage = () => {
     try {
       const response = await api.getSchedules();
       if (response.schedules && Array.isArray(response.schedules)) {
-        // Sort schedules by eventDate and time
         const sortedSchedules = response.schedules.sort((a: Schedule, b: Schedule) => {
           const dateComparison = a.eventDate.localeCompare(b.eventDate);
           if (dateComparison !== 0) return dateComparison;
@@ -102,6 +116,10 @@ const SeatsPage = () => {
     e.preventDefault();
     if (!selectedBranchId) {
       toast.error('Please select a branch before adding seats');
+      return;
+    }
+    if (!newSeatNumbers.trim()) {
+      toast.error('Please enter at least one seat number');
       return;
     }
     setIsAdding(true);
@@ -129,13 +147,34 @@ const SeatsPage = () => {
     }
   };
 
+  const handleBranchChange = (option: SelectOption | null) => {
+    setSelectedBranchId(option ? option.value : null);
+  };
+
+  const handleShiftChange = (option: SelectOption | null) => {
+    setSelectedShiftId(option ? option.value : null);
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchBranches();
       fetchSeats();
       fetchSchedules();
     }
-  }, [selectedBranchId, isAuthenticated]);
+  }, [selectedBranchId, selectedShiftId, isAuthenticated]);
+
+  const branchOptions: SelectOption[] = [
+    { value: null, label: 'All Branches' },
+    ...branches.map(branch => ({ value: branch.id, label: branch.name })),
+  ];
+
+  const shiftOptions: SelectOption[] = [
+    { value: null, label: 'All Shifts' },
+    ...schedules.map(schedule => ({
+      value: schedule.id,
+      label: `${schedule.title} (${schedule.time} on ${schedule.eventDate})`,
+    })),
+  ];
 
   if (authLoading) {
     return (
@@ -153,169 +192,139 @@ const SeatsPage = () => {
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="max-w-7xl mx-auto">
             <div className="mb-6 flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-gray-200">Seat Assignments</h1>
-                <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400 mt-1">Manage library seat availability</p>
+              <div className="flex items-center">
+                <button
+                  onClick={() => navigate(-1)}
+                  className="mr-4 text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-gray-100"
+                >
+                  <ArrowLeft size={24} />
+                </button>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100">
+                  Seat Management
+                </h1>
               </div>
-              <button
-                onClick={() => navigate(-1)}
-                className="flex items-center text-purple-600 hover:text-purple-800 transition-colors"
-                aria-label="Go back"
-              >
-                <ArrowLeft size={20} className="mr-1" />
-                Back
-              </button>
             </div>
 
-            <div className="mb-6">
-              <label htmlFor="branch-select" className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2">
-                Filter by Branch:
-              </label>
-              <select
-                id="branch-select"
-                value={selectedBranchId ?? ''}
-                onChange={(e) => setSelectedBranchId(e.target.value ? parseInt(e.target.value, 10) : null)}
-                className="border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="">All Branches</option>
-                {branches.map((branch) => (
-                  <option key={branch.id} value={branch.id.toString()}>
-                    {branch.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {loading ? (
-              <div className="flex justify-center items-center py-8">
-                <Loader2 size={24} className="animate-spin text-gray-500 dark:text-gray-400" />
+            <div className="mb-6 flex flex-col sm:flex-row gap-4">
+              <div className="w-full sm:w-1/3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Select Branch
+                </label>
+                <Select
+                  options={branchOptions}
+                  value={branchOptions.find(option => option.value === selectedBranchId) || null}
+                  onChange={handleBranchChange}
+                  placeholder="Select a branch"
+                  className="w-full"
+                />
               </div>
-            ) : error ? (
-              <div className="text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/30 p-4 rounded-lg mb-6">
-                {error}
+              <div className="w-full sm:w-1/3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Filter by Shift
+                </label>
+                <Select
+                  options={shiftOptions}
+                  value={shiftOptions.find(option => option.value === selectedShiftId) || null}
+                  onChange={handleShiftChange}
+                  placeholder="Select a shift"
+                  className="w-full"
+                />
               </div>
-            ) : seats.length === 0 ? (
-              <div className="text-center text-gray-500 dark:text-gray-400 py-8">
-                No seats available. Add seats below to get started.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
-                {seats.map((seat) => {
-                  // Map each schedule to its assignment status for this seat
-                  const shiftStatuses = schedules.map((schedule) => {
-                    const seatShift = seat.shifts.find((s) => s.shiftId === schedule.id);
-                    return {
-                      schedule,
-                      isAssigned: seatShift ? seatShift.isAssigned : false,
-                      studentName: seatShift ? seatShift.studentName : null,
-                    };
-                  });
-
-                  return (
-                    <div
-                      key={seat.id}
-                      className="p-3 border rounded-lg shadow-sm bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-base font-semibold text-gray-800 dark:text-gray-200">
-                          Seat {seat.seatNumber}
-                        </h3>
-                        <button
-                          onClick={() => handleDeleteSeat(seat.id)}
-                          className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-800/50 transition-colors"
-                          aria-label={`Delete seat ${seat.seatNumber}`}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                      {shiftStatuses.length === 0 ? (
-                        <p className="text-gray-500 dark:text-gray-400 text-xs">
-                          No shifts available.
-                        </p>
-                      ) : (
-                        <div className="max-h-40 overflow-y-auto space-y-1">
-                          {shiftStatuses.map(({ schedule, isAssigned, studentName }) => (
-                            <div
-                              key={schedule.id}
-                              className={`flex items-center gap-1 p-1 rounded-md text-xs ${
-                                isAssigned
-                                  ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-500'
-                                  : 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                              }`}
-                            >
-                              <span className="flex-1 truncate">
-                                {schedule.title} ({schedule.description})
-                              </span>
-                              {isAssigned && studentName && (
-                                <span className="text-[15px] italic truncate">
-                                  {studentName}
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-              <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-                <div className="flex-1">
-                  <label htmlFor="seat-numbers" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Add New Seats
-                  </label>
+              <div className="w-full sm:w-1/3">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Add New Seats (comma-separated)
+                </label>
+                <div className="flex gap-2">
                   <input
-                    id="seat-numbers"
                     type="text"
                     value={newSeatNumbers}
                     onChange={(e) => setNewSeatNumbers(e.target.value)}
-                    placeholder="Enter seat numbers (e.g., 1,2,3)"
-                    className="w-full border border-gray-300 dark:border-gray-600 rounded-md p-2 text-sm bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all"
-                    required
-                    disabled={isAdding || !selectedBranchId}
+                    placeholder="e.g., A1, A2, A3"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-100"
                   />
+                  <button
+                    onClick={handleAddSeats}
+                    disabled={isAdding}
+                    className="flex items-center bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:bg-purple-400 transition duration-200"
+                  >
+                    {isAdding ? (
+                      <Loader2 size={20} className="animate-spin mr-2" />
+                    ) : (
+                      <PlusCircle size={20} className="mr-2" />
+                    )}
+                    Add
+                  </button>
                 </div>
-                <button
-                  onClick={handleAddSeats}
-                  className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 dark:hover:bg-purple-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isAdding || !newSeatNumbers.trim() || !selectedBranchId}
-                >
-                  {isAdding ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    <>
-                      <PlusCircle size={16} />
-                      Add Seats
-                    </>
-                  )}
-                </button>
               </div>
             </div>
+
+            {loading && (
+              <div className="flex justify-center">
+                <Loader2 size={24} className="animate-spin text-gray-500 dark:text-gray-400" />
+              </div>
+            )}
+
+            {error && (
+              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4">
+                {error}
+              </div>
+            )}
+
+            {!loading && !error && seats.length === 0 && (
+              <div className="text-center text-gray-500 dark:text-gray-400">
+                No seats found for the selected branch or shift.
+              </div>
+            )}
+
+            {!loading && !error && seats.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {seats.map((seat) => (
+                  <div
+                    key={seat.id}
+                    className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-md border border-gray-200 dark:border-gray-700"
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+                        Seat {seat.seatNumber}
+                      </h2>
+                      <button
+                        onClick={() => handleDeleteSeat(seat.id)}
+                        className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                        title="Delete Seat"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {seat.shifts.map((shift) => (
+                        <div
+                          key={shift.shiftId}
+                          className={`p-2 rounded-lg ${
+                            shift.isAssigned
+                              ? 'bg-red-50 text-red-600 dark:bg-red-900 dark:text-red-300'
+                              : 'bg-green-50 text-green-600 dark:bg-green-900 dark:text-green-300'
+                          }`}
+                          title={
+                            shift.isAssigned
+                              ? `${shift.studentName || 'Unknown'}`
+                              : 'Available'
+                          }
+                        >
+                          {shift.shiftTitle} (
+                          {schedules.find(s => s.id === shift.shiftId)?.description || 'N/A'})
+                          {shift.isAssigned && shift.studentName
+                            ? ` -${shift.studentName}`
+                            : ''}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-fade-in {
-          animation: fadeIn 0.3s ease-out forwards;
-        }
-      `}</style>
     </div>
   );
 };

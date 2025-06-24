@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { Trash2, ArrowLeft, Edit, Printer } from 'lucide-react';
 import archanalogo from './archanalogo.png';
 
-// Updated Student interface to match api.ts exactly
+// Updated Student interface to match api.ts and handle nullable seatId/seatNumber
 interface Student {
   id: number;
   name: string;
@@ -29,9 +29,9 @@ interface Student {
   profileImageUrl?: string | null;
   createdAt: string;
   assignments?: Array<{
-    seatId: number;
+    seatId: number | null;
     shiftId: number;
-    seatNumber: string;
+    seatNumber: string | null;
     shiftTitle: string;
   }>;
 }
@@ -125,12 +125,17 @@ const StudentDetails: React.FC = () => {
   if (error) return <div>{error}</div>;
   if (!student) return <div>Student not found</div>;
 
-  const shiftTitle = student.assignments && student.assignments.length > 0
-    ? student.assignments[0].shiftTitle
-    : undefined;
+  // Extract the first valid seat number, default to "None" if none exist
   const seatNumber = student.assignments && student.assignments.length > 0
-    ? student.assignments[0].seatNumber
-    : undefined;
+    ? student.assignments.find(assignment => assignment.seatNumber !== null && assignment.seatNumber !== 'N/A')?.seatNumber || 'None'
+    : 'None';
+
+  // Extract unique shift titles, prioritizing assignments with seatId
+  const uniqueShiftTitles = student.assignments && student.assignments.length > 0
+    ? [...new Set(student.assignments
+        .filter(assignment => assignment.seatId !== null) // Filter for current seat-based assignments
+        .map(assignment => assignment.shiftTitle))]
+    : [];
 
   return (
     <>
@@ -161,20 +166,25 @@ const StudentDetails: React.FC = () => {
             .print-container {
               padding: 20px;
             }
+            .shift-list {
+              list-style-type: disc;
+              padding-left: 20px;
+            }
           }
         `}
       </style>
 
       <div className="flex h-screen bg-gray-50">
-        {/* <Sidebar className="no-print" /> */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* <Navbar className="no-print" /> */}
           <div className="flex-1 overflow-y-auto p-6">
             <div className="max-w-7xl mx-auto print-container" ref={printRef}>
-              
-
+              <img
+                src={archanalogo}
+                alt="SDM Library Logo"
+                className="print-logo hidden print:block"
+              />
               <h1 className="print-title hidden print:block">Student Details</h1>
-                 
+
               <button
                 onClick={() => navigate(-1)}
                 className="mb-4 flex items-center text-purple-600 hover:text-purple-800 no-print"
@@ -196,13 +206,8 @@ const StudentDetails: React.FC = () => {
                     <img src={student.profileImageUrl} alt="Profile" className="w-32 h-32 object-cover rounded-full" />
                   </div>
                 )}
-                         <img
-                src={archanalogo}
-                alt="SDM Library Logo"
-                className="print-logo hidden print:block"
-              />
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  
                   <div>
                     <h2 className="text-lg font-medium">Name</h2>
                     <p className="text-gray-600">{student.name || 'Unknown'}</p>
@@ -238,14 +243,22 @@ const StudentDetails: React.FC = () => {
                     <p className="text-gray-600">{formatDate(student.membershipEnd)}</p>
                   </div>
                   <div>
-                    <h2 className="text-lg font-medium">Assigned Shift</h2>
-                    <p className="text-gray-600">
-                      {shiftTitle || 'No shift assigned'}
-                    </p>
+                    <h2 className="text-lg font-medium">Seat Number</h2>
+                    <p className="text-gray-600">{seatNumber}</p>
                   </div>
                   <div>
-                    <h2 className="text-lg font-medium">Seat Number</h2>
-                    <p className="text-gray-600">{seatNumber || 'None'}</p>
+                    <h2 className="text-lg font-medium">Assigned Shifts</h2>
+                    {uniqueShiftTitles.length > 0 ? (
+                      <ul className="text-gray-600 shift-list">
+                        {uniqueShiftTitles.map((shiftTitle, index) => (
+                          <li key={index}>
+                            {shiftTitle}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-gray-600">No shifts assigned</p>
+                    )}
                   </div>
                   <div>
                     <h2 className="text-lg font-medium">Total Fee</h2>

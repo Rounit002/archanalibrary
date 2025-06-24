@@ -1,20 +1,16 @@
-// ./routes/auth.js
-
-const checkPermission = (permission) => {
-  return (req, res, next) => {
-    if (!req.session.user) {
-      return res.status(401).json({ message: 'Unauthorized - Please log in' });
-    }
-    if (req.session.user.role === 'admin') { // Admins have all permissions
-      return next();
-    }
-    // Assuming permissions are an array on the user object in session
-    const userPermissions = req.session.user.permissions || [];
-    if (!userPermissions.includes(permission)) {
-      return res.status(403).json({ message: 'Forbidden - Insufficient permissions' });
-    }
-    next();
-  };
+const checkPermission = (req, res, next) => {
+  if (!req.session.user) {
+    return res.status(401).json({ message: 'Unauthorized - Please log in' });
+  }
+  if (req.session.user.role === 'admin') { // Admins have all permissions
+    return next();
+  }
+  // Assuming permissions are an array on the user object in session
+  const userPermissions = req.session.user.permissions || [];
+  if (!userPermissions.includes(permission)) {
+    return res.status(403).json({ message: 'Forbidden - Insufficient permissions' });
+  }
+  next();
 };
 
 const checkAdmin = (req, res, next) => {
@@ -41,19 +37,15 @@ const checkAdminOrStaff = (req, res, next) => {
   return res.status(403).json({ message: 'Forbidden: Admin or Staff access required' });
 };
 
-// --- DEFINED AND EXPORTED authenticateUser middleware ---
 const authenticateUser = (req, res, next) => {
   if (req.session && req.session.user && req.session.user.id) {
     return next();
-  } else {
-    console.warn('[AUTH.JS] User not authenticated (or session invalid) for path:', req.path, 'Session user:', req.session.user);
-    return res.status(401).json({ message: 'Unauthorized - Please log in' });
   }
+  console.warn('[AUTH.JS] User not authenticated (or session invalid) for path:', req.path, 'Session user:', req.session.user);
+  return res.status(401).json({ message: 'Unauthorized - Please log in' });
 };
-// --- END OF authenticateUser ---
 
-
-const authRouter = (pool, bcrypt) => {
+const authRouter = (pool) => {
   const router = require('express').Router();
 
   router.post('/login', async (req, res) => {
@@ -67,8 +59,7 @@ const authRouter = (pool, bcrypt) => {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
       const user = result.rows[0];
-      const isPasswordValid = await bcrypt.compare(password, user.password);
-      if (!isPasswordValid) {
+      if (password !== user.password) {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
       req.session.user = {
@@ -109,7 +100,7 @@ const authRouter = (pool, bcrypt) => {
       return res.json({ 
         isAuthenticated: true, 
         user: { 
-          id: req.session.user.id, 
+          id: req.session.user.id,
           username: req.session.user.username, 
           role: req.session.user.role 
         } 
@@ -125,6 +116,6 @@ module.exports = {
   checkPermission,
   checkAdmin,
   checkAdminOrStaff,
-  authenticateUser, // <<< ENSURE THIS IS EXPORTED
+  authenticateUser,
   authRouter
 };

@@ -8,10 +8,16 @@ module.exports = (pool) => {
       const { shiftId, branchId } = req.query;
       const shiftIdNum = shiftId ? parseInt(shiftId, 10) : null;
       const branchIdNum = branchId ? parseInt(branchId, 10) : null;
+
       let queryText = `
-        SELECT s.id AS seat_id, s.seat_number,
-               sch.id AS shift_id, sch.title AS shift_title,
-               st.id AS student_id, st.name AS student_name
+        SELECT 
+          s.id AS seat_id, 
+          s.seat_number,
+          s.branch_id,
+          sch.id AS shift_id, 
+          sch.title AS shift_title,
+          sa.student_id,
+          st.name AS student_name
         FROM seats s
         CROSS JOIN schedules sch
         LEFT JOIN seat_assignments sa ON s.id = sa.seat_id AND sch.id = sa.shift_id
@@ -39,6 +45,7 @@ module.exports = (pool) => {
           seatsMap.set(seatId, {
             id: seatId,
             seatNumber: row.seat_number,
+            branchId: row.branch_id,
             shifts: []
           });
         }

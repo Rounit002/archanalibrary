@@ -1,10 +1,9 @@
-// File: ExpiredMemberships.tsx
 import React, { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/Sidebar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import api from '../services/api';
-import { Search, ChevronLeft, ChevronRight, Trash2, Eye } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Trash2, Eye, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -21,22 +20,31 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import Select from 'react-select';
 
-// Assuming your api.ts file exports these interfaces
+// Define interfaces based on API responses
+interface Assignment {
+  seatId: number | null;
+  shiftId: number;
+  seatNumber: string | null;
+  shiftTitle: string;
+}
+
 interface Student {
   id: number;
   name: string;
-  email: string;
-  phone: string;
+  email: string | null;
+  phone: string | null;
   membershipEnd: string;
-  shiftId?: number;
-  shiftTitle?: string;
-  seatId?: number;
-  seatNumber?: string;
+  shiftIds?: number[];
+  shiftTitles?: string[];
+  seatId?: number | null;
+  seatNumber?: string | null;
   totalFee?: number;
   cash?: number;
   online?: number;
   securityMoney?: number;
-  remark?: string;
+  remark?: string | null;
+  branchId?: number | null;
+  assignments?: Assignment[];
 }
 
 interface Seat {
@@ -64,14 +72,14 @@ const ExpiredMemberships = () => {
   const [endDate, setEndDate] = useState<Date | undefined>(addMonths(new Date(), 1));
   const [emailInput, setEmailInput] = useState<string>('');
   const [phoneInput, setPhoneInput] = useState<string>('');
-  const [shiftOptions, setShiftOptions] = useState<any[]>([]);
-  const [seatOptions, setSeatOptions] = useState<any[]>([]);
-  const [selectedShift, setSelectedShift] = useState<any>(null);
-  const [selectedSeat, setSelectedSeat] = useState<any>(null);
+  const [shiftOptions, setShiftOptions] = useState<{ value: number; label: string }[]>([]);
+  const [seatOptions, setSeatOptions] = useState<{ value: number | null; label: string }[]>([]);
+  const [selectedShifts, setSelectedShifts] = useState<{ value: number; label: string }[]>([]);
+  const [selectedSeat, setSelectedSeat] = useState<{ value: number | null; label: string } | null>(null);
   const [totalFee, setTotalFee] = useState<string>('');
-  const [cash, setCash] = useState<string>('');
-  const [online, setOnline] = useState<string>('');
-  const [securityMoney, setSecurityMoney] = useState<string>('');
+  const [cash, setCash] = useState<string>('0');
+  const [online, setOnline] = useState<string>('0');
+  const [securityMoney, setSecurityMoney] = useState<string>('0');
   const [remark, setRemark] = useState<string>('');
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -80,14 +88,27 @@ const ExpiredMemberships = () => {
     (async () => {
       setLoading(true);
       try {
-        // More efficient: fetch only expired members directly
         const [studentsResp, shiftsResp] = await Promise.all([
           api.getExpiredMemberships(),
           api.getSchedules(),
         ]);
 
-        // No more client-side filtering needed
-        setStudents(studentsResp.students);
+        // Ensure students array is properly typed
+        const typedStudents: Student[] = Array.isArray(studentsResp.students)
+          ? studentsResp.students.map((s: any) => ({
+              ...s,
+              email: s.email || null,
+              phone: s.phone || null,
+              branchId: s.branchId || null,
+              totalFee: s.totalFee || 0,
+              cash: s.cash || 0,
+              online: s.online || 0,
+              securityMoney: s.securityMoney || 0,
+              remark: s.remark || null,
+            }))
+          : [];
+
+        setStudents(typedStudents);
         setShiftOptions(shiftsResp.schedules.map((shift: any) => ({ value: shift.id, label: shift.title })));
       } catch (e: any) {
         console.error('Error fetching data:', e);
@@ -99,77 +120,141 @@ const ExpiredMemberships = () => {
   }, []);
 
   useEffect(() => {
-    if (selectedShift && selectedStudent) {
-      const fetchSeatsForShift = async () => {
+    if (selectedShifts.length > 0 && selectedStudent) {
+      const fetchSeatsForShifts = async () => {
         try {
-          const response = await api.getSeats({ shiftId: selectedShift.value });
-          const allSeats: Seat[] = response.seats;
-          // Filter seats that are not assigned OR assigned to the current student being renewed
-          const availableSeats = allSeats.filter((seat: any) => !seat.studentId || seat.studentId === selectedStudent.id);
+          const shiftIds = selectedShifts.map((s) => s.value);
+          const seatPromises = shiftIds.map((shiftId) => api.getSeats({ shiftId }));
+          const seatResponses = await Promise.all(seatPromises);
+          const allSeatsPerShift = seatResponses.map((res) => res.seats as Seat[]);
+
+          const availableSeats = allSeatsPerShift.reduce((commonSeats, currentSeats) => {
+            return commonSeats.filter((seat) =>
+              currentSeats.some((cs) => cs.id === seat.id && (!cs.studentId || cs.studentId === selectedStudent.id))
+            );
+          }, allSeatsPerShift[0] || []);
+
           setSeatOptions([
             { value: null, label: 'None' },
-            ...availableSeats.map((seat: any) => ({ value: seat.id, label: seat.seatNumber }))
+            ...availableSeats.map((seat) => ({ value: seat.id, label: seat.seatNumber })),
           ]);
-          // Reset seat if it's no longer valid for the new shift
-          if (selectedSeat && !availableSeats.some((seat: any) => seat.id === selectedSeat.value) && selectedSeat.value !== null) {
+
+          if (selectedSeat && !availableSeats.some((seat) => seat.id === selectedSeat.value) && selectedSeat.value !== null) {
             setSelectedSeat(null);
           }
         } catch (error) {
-          console.error('Error fetching seats for shift:', error);
+          console.error('Error fetching seats for shifts:', error);
           toast.error('Failed to fetch seats');
         }
       };
-      fetchSeatsForShift();
+      fetchSeatsForShifts();
+    } else {
+      setSeatOptions([{ value: null, label: 'None' }]);
     }
-  }, [selectedShift, selectedStudent]);
+  }, [selectedShifts, selectedStudent]);
 
-  const handleRenewClick = (student: Student) => {
+  const handleRenewClick = async (student: Student) => {
     setSelectedStudent(student);
     setStartDate(new Date());
     setEndDate(addMonths(new Date(), 1));
     setEmailInput(student.email || '');
     setPhoneInput(student.phone || '');
-    setSelectedShift(student.shiftId ? { value: student.shiftId, label: student.shiftTitle } : null);
-    setSelectedSeat(student.seatId ? { value: student.seatId, label: student.seatNumber } : null);
-    setTotalFee(student.totalFee ? student.totalFee.toString() : '');
-    setCash(''); // Reset payment fields on open
-    setOnline('');
-    setSecurityMoney(student.securityMoney ? student.securityMoney.toString() : '');
-    setRemark(student.remark || '');
+
+    try {
+      const studentDetails = await api.getStudent(student.id);
+      const shiftIds = studentDetails.assignments
+        ? [...new Set(studentDetails.assignments.map((a) => a.shiftId))]
+        : [];
+      const shiftTitles = studentDetails.assignments
+        ? [...new Set(studentDetails.assignments.map((a) => a.shiftTitle))]
+        : [];
+      setSelectedShifts(
+        shiftIds.map((id, index) => ({
+          value: id,
+          label: shiftTitles[index] || 'Unknown Shift',
+        }))
+      );
+      setSelectedSeat(
+        studentDetails.assignments?.[0]?.seatId
+          ? { value: studentDetails.assignments[0].seatId, label: studentDetails.assignments[0].seatNumber || 'None' }
+          : { value: null, label: 'None' }
+      );
+      setTotalFee(student.totalFee?.toString() || '0');
+      setCash('0');
+      setOnline('0');
+      setSecurityMoney(student.securityMoney?.toString() || '0');
+      setRemark(student.remark || '');
+    } catch (error) {
+      console.error('Error fetching student details:', error);
+      setSelectedShifts([]);
+      setSelectedSeat({ value: null, label: 'None' });
+      setTotalFee('0');
+      setCash('0');
+      setOnline('0');
+      setSecurityMoney('0');
+      setRemark('');
+    }
+
     setRenewDialogOpen(true);
   };
 
   const handleRenewSubmit = async () => {
-    if (!selectedStudent || !startDate || !endDate || !emailInput || !phoneInput || !selectedShift || !totalFee) {
-      toast.error('Please fill all required fields');
+    if (!selectedStudent || !startDate || !endDate || !emailInput || !phoneInput || selectedShifts.length === 0 || !totalFee) {
+      toast.error('Please fill all required fields (Start Date, End Date, Email, Phone, Shifts, Total Fee)');
       return;
     }
 
+    const totalFeeNum = parseFloat(totalFee) || 0;
+    const cashNum = parseFloat(cash) || 0;
+    const onlineNum = parseFloat(online) || 0;
+    const securityMoneyNum = parseFloat(securityMoney) || 0;
+
+    if (isNaN(totalFeeNum) || totalFeeNum < 0 || isNaN(cashNum) || cashNum < 0 || isNaN(onlineNum) || onlineNum < 0 || isNaN(securityMoneyNum) || securityMoneyNum < 0) {
+      toast.error('Financial values must be valid non-negative numbers');
+      return;
+    }
+
+    const dueAmount = totalFeeNum - (cashNum + onlineNum);
+
     try {
+      const studentDetails = await api.getStudent(selectedStudent.id);
+      const branchId = studentDetails.branchId;
+
       await api.renewStudent(selectedStudent.id, {
         membershipStart: format(startDate, 'yyyy-MM-dd'),
         membershipEnd: format(endDate, 'yyyy-MM-dd'),
         email: emailInput,
         phone: phoneInput,
-        shiftIds: [selectedShift.value], // API expects an array
-        seatId: selectedSeat ? selectedSeat.value : undefined,
-        totalFee: parseFloat(totalFee),
-        cash: parseFloat(cash) || 0,
-        online: parseFloat(online) || 0,
-        securityMoney: parseFloat(securityMoney) || 0,
+        shiftIds: selectedShifts.map((s) => s.value),
+        seatId: selectedSeat ? selectedSeat.value : null,
+        totalFee: totalFeeNum,
+        amountPaid: cashNum + onlineNum,
+        dueAmount: dueAmount,
+        cash: cashNum,
+        online: onlineNum,
+        securityMoney: securityMoneyNum,
         remark: remark.trim() || undefined,
+        branch_id: branchId, // Ensure branch_id is included
       });
 
       toast.success(`Membership renewed for ${selectedStudent.name}`);
       setRenewDialogOpen(false);
 
-      // Refresh the list after renewal
       const resp = await api.getExpiredMemberships();
-      setStudents(resp.students);
-
+      setStudents(resp.students.map((s: any) => ({
+        ...s,
+        email: s.email || null,
+        phone: s.phone || null,
+        branchId: s.branchId || null,
+        totalFee: s.totalFee || 0,
+        cash: s.cash || 0,
+        online: s.online || 0,
+        securityMoney: s.securityMoney || 0,
+        remark: s.remark || null,
+      })));
     } catch (err: any) {
       console.error('Renew error:', err.response?.data || err.message);
-      toast.error(err.response?.data?.message || 'Failed to renew membership');
+      toast.error(err.response?.data?.message || 'Failed to renew membership. Please check the data and try again.');
     }
   };
 
@@ -222,8 +307,8 @@ const ExpiredMemberships = () => {
                   .map((student) => (
                     <TableRow key={student.id}>
                       <TableCell>{student.name}</TableCell>
-                      <TableCell>{student.email}</TableCell>
-                      <TableCell>{student.phone}</TableCell>
+                      <TableCell>{student.email || 'N/A'}</TableCell>
+                      <TableCell>{student.phone || 'N/A'}</TableCell>
                       <TableCell>{formatDate(student.membershipEnd)}</TableCell>
                       <TableCell className="space-x-2">
                         <Button onClick={() => navigate(`/students/${student.id}`)} variant="outline">
@@ -241,16 +326,27 @@ const ExpiredMemberships = () => {
                             onClick={async () => {
                               if (confirm('Are you sure you want to delete this student? This action cannot be undone.')) {
                                 try {
-                                    await api.deleteStudent(student.id);
-                                    setStudents(students.filter((s) => s.id !== student.id));
-                                    toast.success('Student deleted successfully.');
-                                } catch(err: any) {
-                                    toast.error(err.message || "Failed to delete student.");
+                                  await api.deleteStudent(student.id);
+                                  setStudents(students.filter((s) => s.id !== student.id));
+                                  toast.success('Student deleted successfully.');
+                                } catch (err: any) {
+                                  toast.error(err.message || 'Failed to delete student.');
                                 }
                               }
                             }}
                           >
                             <Trash2 size={16} />
+                          </Button>
+                        )}
+                        {student.phone && (
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              const cleanPhone = student.phone!.replace(/[^\d]/g, '');
+                              window.open(`https://wa.me/${cleanPhone}`, '_blank');
+                            }}
+                          >
+                            <MessageCircle size={16} />
                           </Button>
                         )}
                       </TableCell>
@@ -295,12 +391,14 @@ const ExpiredMemberships = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm">Shift</label>
+                <label className="block text-sm">Shifts</label>
                 <Select
                   options={shiftOptions}
-                  value={selectedShift}
-                  onChange={setSelectedShift}
-                  placeholder="Select Shift"
+                  value={selectedShifts}
+                  onChange={(newValue) => setSelectedShifts(newValue as { value: number; label: string }[])}
+                  placeholder="Select Shifts"
+                  isMulti
+                  isSearchable
                 />
               </div>
               <div>
@@ -308,7 +406,7 @@ const ExpiredMemberships = () => {
                 <Select
                   options={seatOptions}
                   value={selectedSeat}
-                  onChange={setSelectedSeat}
+                  onChange={(newValue) => setSelectedSeat(newValue as { value: number | null; label: string } | null)}
                   placeholder="Select Seat"
                 />
               </div>

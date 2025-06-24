@@ -457,7 +457,7 @@ const api = {
     totalFee: number;
     amountPaid: number;
     shiftIds: number[];
-    seatId: number;
+    seatId?: number;
     cash?: number;
     online?: number;
     securityMoney?: number;
@@ -500,11 +500,33 @@ const api = {
       totalFee: number;
       amountPaid: number;
       shiftIds: number[];
-      seatId: number;
+      seatId?: number;
+      cash?: number;
+      online?: number;
+      securityMoney?: number;
+      remark?: string | null;
     }
   ): Promise<{ student: Student }> => {
-    const response = await apiClient.put(`/students/${id}`, studentData);
-    return response.data;
+    try {
+      const normalizedData = {
+        ...studentData,
+        cash: studentData.cash ?? 0,
+        online: studentData.online ?? 0,
+        securityMoney: studentData.securityMoney ?? 0,
+        remark: studentData.remark ?? null,
+      };
+      console.log('[api.ts updateStudent] Sending student data:', JSON.stringify(normalizedData, null, 2));
+      const response = await apiClient.put(`/students/${id}`, normalizedData);
+      console.log('[api.ts updateStudent] Response received:', JSON.stringify(response.data, null, 2));
+      return response.data;
+    } catch (error: any) {
+      console.error('[api.ts updateStudent] Error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      throw error;
+    }
   },
 
   deleteStudent: async (id: number): Promise<{ message: string; student: Student }> => {
@@ -663,37 +685,12 @@ const api = {
     }
   },
 
-  getAvailableShifts: async (seatId: number): Promise<{ availableShifts: Array<{ id: number; title: string; time: string; eventDate: string }> }> => {
+  getAvailableShifts: async (seatId: number): Promise<{ availableShifts: Schedule[] }> => {
     try {
-      const response = await apiClient.get('/seats');
-      const seats = response.data.seats as Seat[];
-      const seat = seats.find(s => s.id === seatId);
-      if (!seat) {
-        throw new Error('Seat not found');
-      }
-      const availableShifts = seat.shifts
-        .filter(shift => !shift.isAssigned)
-        .map(shift => ({
-          id: shift.shiftId,
-          title: shift.shiftTitle,
-          time: '',
-          eventDate: '',
-        }));
-
-      const schedulesResponse = await api.getSchedules();
-      const schedules = schedulesResponse.schedules;
-      const enrichedShifts = availableShifts.map(shift => {
-        const schedule = schedules.find(s => s.id === shift.id);
-        return {
-          ...shift,
-          time: schedule?.time || 'Unknown',
-          eventDate: schedule?.eventDate || 'Unknown',
-        };
-      });
-
-      return { availableShifts: enrichedShifts };
+      const response = await apiClient.get(`/seats/${seatId}/available-shifts`);
+      return response.data;
     } catch (error: any) {
-      console.error('Error fetching available shifts:', error.message);
+      console.error('Error fetching available shifts:', error.response?.data || error.message);
       throw error;
     }
   },
@@ -758,7 +755,7 @@ const api = {
     }
   },
 
-  getCollections: async (params: { month?: string } = {}): Promise<{ collections: Collection[] }> => {
+  getCollections: async (params: { month?: string; branchId?: number } = {}): Promise<{ collections: Collection[] }> => {
     const response = await apiClient.get('/collections', { params });
     return response.data;
   },
@@ -812,8 +809,8 @@ const api = {
     return response.data;
   },
 
-  getProfitLoss: async (month: string) => {
-    const response = await apiClient.get('/reports/profit-loss', { params: { month } });
+  getProfitLoss: async (params: { month: string; branchId?: number }) => {
+    const response = await apiClient.get('/reports/profit-loss', { params });
     return response.data;
   },
 

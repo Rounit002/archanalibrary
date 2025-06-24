@@ -4,7 +4,7 @@ module.exports = (pool) => {
 
   router.get('/profit-loss', checkAdminOrStaff, async (req, res) => {
     try {
-      const { month } = req.query;
+      const { month, branchId } = req.query;
       if (!month || !/^\d{4}-\d{2}$/.test(month)) {
         return res.status(400).json({ message: 'Invalid month format, use YYYY-MM' });
       }
@@ -13,19 +13,31 @@ module.exports = (pool) => {
       const startDate = `${year}-${monthNum}-01`;
       const endDate = new Date(year, monthNum, 0).toISOString().split('T')[0];
   
-      const collectionsResult = await pool.query(
-        `SELECT COALESCE(SUM(amount_paid), 0) AS total_collected
-         FROM student_membership_history
-         WHERE changed_at::date >= $1 AND changed_at::date <= $2`,
-        [startDate, endDate]
-      );
+      let params = [startDate, endDate];
+      let paramIndex = 3;
+      let collectionsQuery = `
+        SELECT COALESCE(SUM(amount_paid), 0) AS total_collected
+        FROM student_membership_history
+        WHERE changed_at::date >= $1 AND changed_at::date <= $2
+      `;
+      let expensesQuery = `
+        SELECT COALESCE(SUM(amount), 0) AS total_expenses
+        FROM expenses
+        WHERE date >= $1 AND date <= $2
+      `;
+
+      if (branchId) {
+        const branchIdNum = parseInt(branchId, 10);
+        if (isNaN(branchIdNum)) {
+          return res.status(400).json({ message: 'Invalid branch ID' });
+        }
+        collectionsQuery += ` AND branch_id = $${paramIndex}`;
+        expensesQuery += ` AND branch_id = $${paramIndex}`;
+        params.push(branchIdNum);
+      }
   
-      const expensesResult = await pool.query(
-        `SELECT COALESCE(SUM(amount), 0) AS total_expenses
-         FROM expenses
-         WHERE date >= $1 AND date <= $2`,
-        [startDate, endDate]
-      );
+      const collectionsResult = await pool.query(collectionsQuery, params);
+      const expensesResult = await pool.query(expensesQuery, params);
   
       const totalCollected = parseFloat(collectionsResult.rows[0].total_collected) || 0;
       const totalExpenses = parseFloat(expensesResult.rows[0].total_expenses) || 0;

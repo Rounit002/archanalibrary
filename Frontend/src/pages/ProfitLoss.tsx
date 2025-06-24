@@ -1,17 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import Sidebar from '../components/Sidebar';
 import api from '../services/api';
 
+interface Branch {
+  id: number;
+  name: string;
+}
+
 const ProfitLoss: React.FC = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [data, setData] = useState<any>(null);
+
+  useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const branchesData = await api.getBranches();
+        setBranches(branchesData);
+      } catch (error) {
+        console.error('Failed to fetch branches:', error);
+        toast.error('Failed to load branches');
+      }
+    };
+    fetchBranches();
+  }, []);
 
   const handleFetch = async () => {
     try {
-      const response = await api.getProfitLoss(month);
+      const params = { month, branchId: selectedBranchId };
+      const response = await api.getProfitLoss(params);
       setData(response);
     } catch (error) {
       console.error('Failed to fetch profit/loss:', error);
@@ -58,6 +79,25 @@ const ProfitLoss: React.FC = () => {
               onChange={(e) => setMonth(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4"
             />
+            <label
+              htmlFor="branch"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
+              Select Branch
+            </label>
+            <select
+              id="branch"
+              value={selectedBranchId || ''}
+              onChange={(e) => setSelectedBranchId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4"
+            >
+              <option value="">All Branches</option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={branch.id}>
+                  {branch.name}
+                </option>
+              ))}
+            </select>
             <button
               onClick={handleFetch}
               className="w-full sm:w-auto bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition"

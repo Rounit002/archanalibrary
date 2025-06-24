@@ -2,7 +2,7 @@ module.exports = (pool) => {
   const router = require('express').Router();
   const { checkAdmin, checkAdminOrStaff } = require('./auth');
 
-  // A helper function to add the dynamic status to the query
+  // Helper function to add dynamic status to query
   const withCalculatedStatus = (selectFields = 's.*') => `
     SELECT
       ${selectFields},
@@ -13,7 +13,7 @@ module.exports = (pool) => {
     FROM students s
   `;
 
-  // GET all students (with calculated status, created_at, and seat number)
+  // GET all students
   router.get('/', checkAdminOrStaff, async (req, res) => {
     try {
       const { branchId } = req.query;
@@ -54,7 +54,7 @@ module.exports = (pool) => {
     }
   });
 
-  // GET active students (dynamically)
+  // GET active students
   router.get('/active', checkAdminOrStaff, async (req, res) => {
     try {
       const { branchId } = req.query;
@@ -89,7 +89,7 @@ module.exports = (pool) => {
     }
   });
 
-  // GET expired students (dynamically)
+  // GET expired students
   router.get('/expired', checkAdminOrStaff, async (req, res) => {
     try {
       const { branchId } = req.query;
@@ -164,7 +164,7 @@ module.exports = (pool) => {
     }
   });
 
-  // GET a single student by ID (with calculated status)
+  // GET a single student by ID
   router.get('/:id', checkAdminOrStaff, async (req, res) => {
     try {
       const id = parseInt(req.params.id, 10);
@@ -185,13 +185,37 @@ module.exports = (pool) => {
         return res.status(404).json({ message: 'Student not found' });
       }
       const studentData = result.rows[0];
+
+      // Fetch assignments with the latest membership_id
+      const latestMembership = await pool.query(
+        'SELECT id FROM student_membership_history WHERE student_id = $1 ORDER BY changed_at DESC LIMIT 1',
+        [id]
+      );
+      const latestMembershipId = latestMembership.rows[0]?.id;
+
       const assignments = await pool.query(`
-        SELECT sa.seat_id, sa.shift_id, seats.seat_number, sch.title AS shift_title
+        SELECT 
+          sa.seat_id, 
+          sa.shift_id, 
+          COALESCE(seats.seat_number, 'N/A') AS seat_number, 
+          sch.title AS shift_title
         FROM seat_assignments sa
         LEFT JOIN seats ON sa.seat_id = seats.id
         LEFT JOIN schedules sch ON sa.shift_id = sch.id
         WHERE sa.student_id = $1
-      `, [id]);
+        UNION
+        SELECT 
+          NULL AS seat_id, 
+          msa.shift_id, 
+          NULL AS seat_number, 
+          sch.title AS shift_title
+        FROM membership_shift_assignments msa
+        JOIN student_membership_history smh ON msa.membership_id = smh.id
+        JOIN schedules sch ON msa.shift_id = sch.id
+        WHERE smh.student_id = $1 AND msa.membership_id = $2
+        ORDER BY shift_id DESC
+      `, [id, latestMembershipId]);
+
       res.json({
         ...studentData,
         membership_start: new Date(studentData.membership_start).toISOString().split('T')[0],
@@ -203,7 +227,12 @@ module.exports = (pool) => {
         online: parseFloat(studentData.online || 0),
         security_money: parseFloat(studentData.security_money || 0),
         remark: studentData.remark || '',
-        assignments: assignments.rows
+        assignments: assignments.rows.map(row => ({
+          seatId: row.seat_id,
+          shiftId: row.shift_id,
+          seatNumber: row.seat_number === 'N/A' ? null : row.seat_number,
+          shiftTitle: row.shift_title
+        }))
       });
     } catch (err) {
       console.error('Error in students/:id route:', err.stack);
@@ -286,7 +315,7 @@ module.exports = (pool) => {
 
       const branchIdNum = parseInt(branch_id, 10);
       const seatIdNum = seat_id ? parseInt(seat_id, 10) : null;
-      const shiftIdsNum = shift_ids && Array.isArray(shift_ids) ? shift_ids.map(id => parseInt(id, 10)) : [];
+      const shiftIdsNum = shift_ids && Array.isArray(shift_ids) ? [...new Set(shift_ids.map(id => parseInt(id, 10)))].filter(id => !isNaN(id)) : [];
 
       const feeValue = parseFloat(total_fee || 0);
       const paidValue = parseFloat(amount_paid || 0);
@@ -324,11 +353,11 @@ module.exports = (pool) => {
       const dueAmount = feeValue - paidValue;
 
       if (seatIdNum && shiftIdsNum.length > 0) {
-        const seatCheck = await client.query('SELECT 1 FROM seats WHERE id = $1', [seatIdNum]);
+        const seatCheck = await client.query('SELECT 1 FROM seats WHERE id = $1 AND branch_id = $2', [seatIdNum, branchIdNum]);
         if (seatCheck.rows.length === 0) {
-          console.error('Validation failed: Seat does not exist', { seatIdNum });
+          console.error('Validation failed: Seat does not exist or does not belong to branch', { seatIdNum, branchIdNum });
           await client.query('ROLLBACK');
-          return res.status(400).json({ message: `Seat with ID ${seatIdNum} does not exist` });
+          return res.status(400).json({ message: `Seat with ID ${seatIdNum} does not exist or does not belong to selected branch` });
         }
 
         for (const shiftId of shiftIdsNum) {
@@ -352,7 +381,7 @@ module.exports = (pool) => {
           }
         }
       }
-      
+
       const status = new Date(membership_end) < new Date() ? 'expired' : 'active';
 
       console.log('Inserting into students table with values:', {
@@ -373,8 +402,7 @@ module.exports = (pool) => {
       const student = result.rows[0];
       console.log('Inserted student:', student);
 
-      let firstShiftId = null;
-      if (seatIdNum && shiftIdsNum.length > 0) {
+      if (shiftIdsNum.length > 0) {
         for (const shiftId of shiftIdsNum) {
           console.log('Inserting into seat_assignments:', { seatIdNum, shiftId, studentId: student.id });
           await client.query(
@@ -382,27 +410,40 @@ module.exports = (pool) => {
             [seatIdNum, shiftId, student.id]
           );
           console.log('Successfully inserted into seat_assignments for shift:', shiftId);
-          if (!firstShiftId) firstShiftId = shiftId;
         }
       }
 
-      await client.query(
+      const historyResult = await client.query(
         `INSERT INTO student_membership_history (
           student_id, name, email, phone, address,
           membership_start, membership_end, status,
           total_fee, amount_paid, due_amount,
           cash, online, security_money, remark,
-          seat_id, shift_id,
+          seat_id, branch_id,
           changed_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
+        RETURNING id`,
         [
           student.id, student.name, student.email, student.phone, student.address,
           student.membership_start, student.membership_end, student.status,
           student.total_fee, student.amount_paid, student.due_amount,
           student.cash, student.online, student.security_money, student.remark || '',
-          seatIdNum, firstShiftId
+          seatIdNum, branchIdNum
         ]
       );
+
+      const membershipId = historyResult.rows[0].id;
+
+      if (shiftIdsNum.length > 0) {
+        for (const shiftId of shiftIdsNum) {
+          console.log('Inserting into membership_shift_assignments:', { membershipId, shiftId });
+          await client.query(
+            'INSERT INTO membership_shift_assignments (membership_id, shift_id) VALUES ($1, $2)',
+            [membershipId, shiftId]
+          );
+          console.log('Successfully inserted into membership_shift_assignments for shift:', shiftId);
+        }
+      }
 
       await client.query('COMMIT');
 
@@ -430,9 +471,9 @@ module.exports = (pool) => {
 
   // PUT update a student
   router.put('/:id', checkAdminOrStaff, async (req, res) => {
-    const client = await pool.connect(); // Use a transaction to ensure consistency
+    const client = await pool.connect();
     try {
-      await client.query('BEGIN'); // Start transaction
+      await client.query('BEGIN');
 
       const id = parseInt(req.params.id, 10);
       const {
@@ -440,17 +481,17 @@ module.exports = (pool) => {
         total_fee, amount_paid, shift_ids, seat_id, cash, online, security_money, remark
       } = req.body;
 
-      // Validate required fields
+      // Validation for required fields
       if (!name || !email || !phone || !address || !branch_id || !membership_start || !membership_end) {
         await client.query('ROLLBACK');
         return res.status(400).json({ message: 'Required fields missing (name, email, phone, address, branch_id, membership_start, membership_end)' });
       }
 
-      const branchIdNum = branch_id ? parseInt(branch_id, 10) : null;
+      const branchIdNum = parseInt(branch_id, 10);
       const seatIdNum = seat_id ? parseInt(seat_id, 10) : null;
-      const shiftIdsNum = shift_ids && Array.isArray(shift_ids) ? shift_ids.map(id => parseInt(id, 10)) : [];
+      const shiftIdsNum = shift_ids && Array.isArray(shift_ids) ? [...new Set(shift_ids.map(id => parseInt(id, 10)))].filter(id => !isNaN(id)) : [];
 
-      // Fetch the current student record to preserve existing values if not provided
+      // Fetch current student data for default values
       const currentStudentRes = await client.query(
         `SELECT total_fee, amount_paid, due_amount, cash, online, security_money 
          FROM students 
@@ -465,7 +506,7 @@ module.exports = (pool) => {
 
       const currentStudent = currentStudentRes.rows[0];
 
-      // Parse monetary fields, preserving existing values if not provided
+      // Parse financial fields with fallbacks
       const totalFeeValue = total_fee !== undefined && total_fee !== null && total_fee !== ''
         ? parseFloat(total_fee)
         : parseFloat(currentStudent.total_fee || 0);
@@ -482,7 +523,7 @@ module.exports = (pool) => {
         ? parseFloat(security_money)
         : parseFloat(currentStudent.security_money || 0);
 
-      // Validate monetary fields
+      // Validate financial fields
       if (isNaN(totalFeeValue) || totalFeeValue < 0) {
         await client.query('ROLLBACK');
         return res.status(400).json({ message: 'Total fee must be a valid non-negative number' });
@@ -504,44 +545,10 @@ module.exports = (pool) => {
         return res.status(400).json({ message: 'Security money must be a valid non-negative number' });
       }
 
-      // Recalculate due_amount based on the new or existing total_fee and amount_paid
       const dueAmountValue = totalFeeValue - amountPaidValue;
-
-      // Validate seat and shift assignments if provided
-      if (seatIdNum && shiftIdsNum.length > 0) {
-        // Check if seat exists
-        const seatCheck = await client.query('SELECT 1 FROM seats WHERE id = $1', [seatIdNum]);
-        if (seatCheck.rows.length === 0) {
-          await client.query('ROLLBACK');
-          return res.status(400).json({ message: `Seat with ID ${seatIdNum} does not exist` });
-        }
-
-        // Check if shifts exist
-        for (const shiftId of shiftIdsNum) {
-          const shiftCheck = await client.query('SELECT 1 FROM schedules WHERE id = $1', [shiftId]);
-          if (shiftCheck.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ message: `Shift with ID ${shiftId} does not exist` });
-          }
-        }
-
-        // Check for seat assignment conflicts
-        for (const shiftId of shiftIdsNum) {
-          const checkAssignment = await client.query(
-            'SELECT 1 FROM seat_assignments WHERE seat_id = $1 AND shift_id = $2 AND student_id != $3',
-            [seatIdNum, shiftId, id]
-          );
-          if (checkAssignment.rows.length > 0) {
-            await client.query('ROLLBACK');
-            return res.status(400).json({ message: `Seat is already assigned for shift ${shiftId}` });
-          }
-        }
-      }
-
-      // Determine the status based on membership_end date
       const status = new Date(membership_end) < new Date() ? 'expired' : 'active';
 
-      // Update the students table
+      // Update students table
       const result = await client.query(
         `UPDATE students 
          SET name = $1, email = $2, phone = $3, address = $4, branch_id = $5,
@@ -557,69 +564,83 @@ module.exports = (pool) => {
         ]
       );
 
-      if (result.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ message: 'Student not found' });
-      }
-
       const updatedStudent = result.rows[0];
 
-      // Update seat assignments if provided
-      let firstShiftId = null;
-      if (seatIdNum && shiftIdsNum.length > 0) {
-        await client.query('DELETE FROM seat_assignments WHERE student_id = $1', [id]);
+      // Find and update latest membership history
+      const historyRes = await client.query(
+        'SELECT id FROM student_membership_history WHERE student_id = $1 ORDER BY changed_at DESC LIMIT 1',
+        [id]
+      );
+
+      let membershipId;
+      if (historyRes.rows.length > 0) {
+        membershipId = historyRes.rows[0].id;
+        await client.query(
+          `UPDATE student_membership_history 
+           SET name = $1, email = $2, phone = $3, address = $4,
+               membership_start = $5, membership_end = $6, status = $7,
+               total_fee = $8, amount_paid = $9, due_amount = $10,
+               cash = $11, online = $12, security_money = $13, remark = $14,
+               seat_id = $15, branch_id = $16,
+               changed_at = NOW()
+           WHERE id = $17`,
+          [
+            name, email, phone, address,
+            membership_start, membership_end, status,
+            totalFeeValue, amountPaidValue, dueAmountValue,
+            cashValue, onlineValue, securityMoneyValue, remark || null,
+            seatIdNum, branchIdNum,
+            membershipId
+          ]
+        );
+      } else {
+        console.warn(`No membership history found for student ${id}, inserting new record`);
+        const historyInsert = await client.query(
+          `INSERT INTO student_membership_history (
+            student_id, name, email, phone, address,
+            membership_start, membership_end, status,
+            total_fee, amount_paid, due_amount,
+            cash, online, security_money, remark,
+            seat_id, branch_id,
+            changed_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
+          RETURNING id`,
+          [
+            id, name, email, phone, address,
+            membership_start, membership_end, status,
+            totalFeeValue, amountPaidValue, dueAmountValue,
+            cashValue, onlineValue, securityMoneyValue, remark || null,
+            seatIdNum, branchIdNum
+          ]
+        );
+        membershipId = historyInsert.rows[0].id;
+      }
+
+      // Update seat_assignments: delete all and re-insert
+      await client.query('DELETE FROM seat_assignments WHERE student_id = $1', [id]);
+      if (shiftIdsNum.length > 0) {
         for (const shiftId of shiftIdsNum) {
           await client.query(
             'INSERT INTO seat_assignments (seat_id, shift_id, student_id) VALUES ($1, $2, $3)',
             [seatIdNum, shiftId, id]
           );
-          if (!firstShiftId) firstShiftId = shiftId; // Take the first shift for history
         }
-      } else {
-        // If no seat or shifts are provided, clear the seat assignments
-        await client.query('DELETE FROM seat_assignments WHERE student_id = $1', [id]);
       }
 
-      // Fetch the latest student_membership_history record for this student
-      const historyRes = await client.query(
-        `SELECT id 
-         FROM student_membership_history 
-         WHERE student_id = $1 
-         ORDER BY changed_at DESC 
-         LIMIT 1`,
-        [id]
-      );
-
-      if (historyRes.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ message: 'No membership history found for this student' });
+      // Update membership_shift_assignments: delete all for the student and re-insert for the latest membership
+      await client.query('DELETE FROM membership_shift_assignments WHERE membership_id IN (SELECT id FROM student_membership_history WHERE student_id = $1)', [id]);
+      if (shiftIdsNum.length > 0) {
+        for (const shiftId of shiftIdsNum) {
+          await client.query(
+            'INSERT INTO membership_shift_assignments (membership_id, shift_id) VALUES ($1, $2)',
+            [membershipId, shiftId]
+          );
+        }
       }
 
-      const historyId = historyRes.rows[0].id;
+      await client.query('COMMIT');
 
-      // Update the latest student_membership_history record
-      await client.query(
-        `UPDATE student_membership_history 
-         SET name = $1, email = $2, phone = $3, address = $4,
-             membership_start = $5, membership_end = $6, status = $7,
-             total_fee = $8, amount_paid = $9, due_amount = $10,
-             cash = $11, online = $12, security_money = $13, remark = $14,
-             seat_id = $15, shift_id = $16,
-             changed_at = NOW()
-         WHERE id = $17`,
-        [
-          name, email, phone, address,
-          membership_start, membership_end, status,
-          totalFeeValue, amountPaidValue, dueAmountValue,
-          cashValue, onlineValue, securityMoneyValue, remark || '',
-          seatIdNum, firstShiftId,
-          historyId
-        ]
-      );
-
-      await client.query('COMMIT'); // Commit transaction
-
-      // Return the updated student
+      // Return updated student data
       res.json({ 
         student: {
           ...updatedStudent,
@@ -635,7 +656,7 @@ module.exports = (pool) => {
         }
       });
     } catch (err) {
-      await client.query('ROLLBACK'); // Roll back transaction on error
+      await client.query('ROLLBACK');
       console.error('Error updating student:', err);
       res.status(500).json({ message: 'Server error', error: err.message });
     } finally {
@@ -648,6 +669,7 @@ module.exports = (pool) => {
     try {
       const id = parseInt(req.params.id, 10);
       await pool.query('DELETE FROM seat_assignments WHERE student_id = $1', [id]);
+      await pool.query('DELETE FROM membership_shift_assignments WHERE membership_id IN (SELECT id FROM student_membership_history WHERE student_id = $1)', [id]);
       await pool.query('DELETE FROM student_membership_history WHERE student_id = $1', [id]);
       const del = await pool.query('DELETE FROM students WHERE id = $1 RETURNING *', [id]);
       if (!del.rows[0]) {
@@ -702,7 +724,10 @@ module.exports = (pool) => {
 
   // POST renew a student's membership
   router.post('/:id/renew', checkAdmin, async (req, res) => {
+    const client = await pool.connect();
     try {
+      await client.query('BEGIN');
+
       const id = parseInt(req.params.id, 10);
       const {
         membership_start, membership_end, email, phone, branch_id, seat_id, shift_ids,
@@ -710,33 +735,39 @@ module.exports = (pool) => {
       } = req.body;
 
       if (!membership_start || !membership_end) {
+        await client.query('ROLLBACK');
         return res.status(400).json({ message: 'membership_start and membership_end are required' });
       }
 
       const branchIdNum = branch_id ? parseInt(branch_id, 10) : null;
       const seatIdNum = seat_id ? parseInt(seat_id, 10) : null;
-      const shiftIdsNum = shift_ids && Array.isArray(shift_ids) ? shift_ids.map(id => parseInt(id, 10)) : [];
+      const shiftIdsNum = shift_ids && Array.isArray(shift_ids) ? [...new Set(shift_ids.map(id => parseInt(id, 10)))].filter(id => !isNaN(id)) : [];
 
-      const cur = await pool.query('SELECT * FROM students WHERE id = $1', [id]);
+      const cur = await client.query('SELECT * FROM students WHERE id = $1', [id]);
       if (!cur.rows[0]) {
+        await client.query('ROLLBACK');
         return res.status(404).json({ message: 'Student not found' });
       }
       const old = cur.rows[0];
 
       const feeValue = parseFloat(total_fee || old.total_fee || 0);
       if (isNaN(feeValue) || feeValue < 0) {
+        await client.query('ROLLBACK');
         return res.status(400).json({ message: 'Total fee must be a valid non-negative number' });
       }
       const cashValue = parseFloat(cash || 0);
       const onlineValue = parseFloat(online || 0);
       const securityMoneyValue = parseFloat(security_money || old.security_money || 0);
       if (isNaN(cashValue) || cashValue < 0) {
+        await client.query('ROLLBACK');
         return res.status(400).json({ message: 'Cash must be a valid non-negative number' });
       }
       if (isNaN(onlineValue) || onlineValue < 0) {
+        await client.query('ROLLBACK');
         return res.status(400).json({ message: 'Online payment must be a valid non-negative number' });
       }
       if (isNaN(securityMoneyValue) || securityMoneyValue < 0) {
+        await client.query('ROLLBACK');
         return res.status(400).json({ message: 'Security money must be a valid non-negative number' });
       }
 
@@ -744,18 +775,33 @@ module.exports = (pool) => {
       const due = feeValue - amount_paid;
 
       if (seatIdNum && shiftIdsNum.length > 0) {
+        const seatCheck = await client.query('SELECT 1 FROM seats WHERE id = $1 AND branch_id = $2', [seatIdNum, branchIdNum]);
+        if (seatCheck.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ message: `Seat with ID ${seatIdNum} does not exist or does not belong to selected branch` });
+        }
+
         for (const shiftId of shiftIdsNum) {
-          const checkAssignment = await pool.query(
+          const shiftCheck = await client.query('SELECT 1 FROM schedules WHERE id = $1', [shiftId]);
+          if (shiftCheck.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ message: `Shift with ID ${shiftId} does not exist` });
+          }
+        }
+
+        for (const shiftId of shiftIdsNum) {
+          const checkAssignment = await client.query(
             'SELECT 1 FROM seat_assignments WHERE seat_id = $1 AND shift_id = $2 AND student_id != $3',
             [seatIdNum, shiftId, id]
           );
           if (checkAssignment.rows.length > 0) {
+            await client.query('ROLLBACK');
             return res.status(400).json({ message: `Seat is already assigned for shift ${shiftId}` });
           }
         }
       }
 
-      const upd = await pool.query(
+      const upd = await client.query(
         `UPDATE students
          SET membership_start = $1,
              membership_end   = $2,
@@ -780,35 +826,50 @@ module.exports = (pool) => {
       );
       const updated = upd.rows[0];
 
-      let firstShiftId = null;
-      if (seatIdNum && shiftIdsNum.length > 0) {
-        await pool.query('DELETE FROM seat_assignments WHERE student_id = $1', [id]);
+      if (shiftIdsNum.length > 0) {
+        await client.query('DELETE FROM seat_assignments WHERE student_id = $1', [id]);
         for (const shiftId of shiftIdsNum) {
-          await pool.query(
+          await client.query(
             'INSERT INTO seat_assignments (seat_id, shift_id, student_id) VALUES ($1, $2, $3)',
             [seatIdNum, shiftId, id]
           );
-          if (!firstShiftId) firstShiftId = shiftId;
         }
+      } else {
+        await client.query('DELETE FROM seat_assignments WHERE student_id = $1', [id]);
       }
 
-      await pool.query(
+      const historyResult = await client.query(
         `INSERT INTO student_membership_history (
           student_id, name, email, phone, address,
           membership_start, membership_end, status,
           total_fee, amount_paid, due_amount,
           cash, online, security_money, remark,
-          seat_id, shift_id,
+          seat_id, branch_id,
           changed_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
+        RETURNING id`,
         [
           updated.id, updated.name, updated.email, updated.phone, updated.address,
           updated.membership_start, updated.membership_end, updated.status,
           updated.total_fee, updated.amount_paid, updated.due_amount,
           updated.cash, updated.online, updated.security_money, updated.remark || '',
-          seatIdNum, firstShiftId
+          seatIdNum, branchIdNum
         ]
       );
+
+      const membershipId = historyResult.rows[0].id;
+
+      if (shiftIdsNum.length > 0) {
+        await client.query('DELETE FROM membership_shift_assignments WHERE membership_id = $1', [membershipId]);
+        for (const shiftId of shiftIdsNum) {
+          await client.query(
+            'INSERT INTO membership_shift_assignments (membership_id, shift_id) VALUES ($1, $2)',
+            [membershipId, shiftId]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
 
       res.json({
         message: 'Membership renewed',
@@ -824,8 +885,11 @@ module.exports = (pool) => {
         }
       });
     } catch (err) {
+      await client.query('ROLLBACK');
       console.error('Error in students/:id/renew route:', err.stack);
       res.status(500).json({ message: 'Server error', error: err.message });
+    } finally {
+      client.release();
     }
   });
 

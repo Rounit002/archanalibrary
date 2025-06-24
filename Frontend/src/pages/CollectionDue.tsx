@@ -17,6 +17,13 @@ interface Collection {
   securityMoney: number;
   remark: string;
   createdAt: string | null;
+  branchId?: number;
+  branchName?: string;
+}
+
+interface Branch {
+  id: number;
+  name: string;
 }
 
 const CollectionDue: React.FC = () => {
@@ -26,6 +33,8 @@ const CollectionDue: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonth);
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [filteredCollections, setFilteredCollections] = useState<Collection[]>([]);
   const [isPayModalOpen, setIsPayModalOpen] = useState(false);
   const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null);
@@ -33,9 +42,24 @@ const CollectionDue: React.FC = () => {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'online' | null>(null);
 
   useEffect(() => {
+    const fetchBranches = async () => {
+      try {
+        const branchesData = await api.getBranches();
+        setBranches(branchesData);
+      } catch (error) {
+        console.error('Failed to fetch branches:', error);
+        toast.error('Failed to load branches');
+      }
+    };
+    fetchBranches();
+  }, []);
+
+  useEffect(() => {
     const fetchCollections = async () => {
       try {
-        const params = selectedMonth ? { month: selectedMonth } : {};
+        const params: { month?: string; branchId?: number } = {};
+        if (selectedMonth) params.month = selectedMonth;
+        if (selectedBranchId) params.branchId = selectedBranchId;
         const data = await api.getCollections(params);
 
         if (!data || !Array.isArray(data.collections)) {
@@ -55,6 +79,8 @@ const CollectionDue: React.FC = () => {
           securityMoney: typeof c.securityMoney === 'number' ? c.securityMoney : 0,
           remark: c.remark || '',
           createdAt: c.createdAt,
+          branchId: c.branchId,
+          branchName: c.branchName
         }));
 
         setCollections(mapped);
@@ -68,7 +94,7 @@ const CollectionDue: React.FC = () => {
     };
 
     fetchCollections();
-  }, [selectedMonth]);
+  }, [selectedMonth, selectedBranchId]);
 
   useEffect(() => {
     setFilteredCollections(
@@ -107,13 +133,15 @@ const CollectionDue: React.FC = () => {
       return;
     }
     try {
-      await api.updateCollectionPayment(selectedCollection.historyId, { // Removed .toString() since historyId is a number
+      await api.updateCollectionPayment(selectedCollection.historyId, {
         amount: payment,
         method: paymentMethod,
       });
       toast.success('Payment updated successfully');
       setIsPayModalOpen(false);
-      const params = selectedMonth ? { month: selectedMonth } : {};
+      const params: { month?: string; branchId?: number } = {};
+      if (selectedMonth) params.month = selectedMonth;
+      if (selectedBranchId) params.branchId = selectedBranchId;
       const data = await api.getCollections(params);
       const mapped = data.collections.map((c: any) => ({
         historyId: c.historyId,
@@ -128,6 +156,8 @@ const CollectionDue: React.FC = () => {
         securityMoney: typeof c.securityMoney === 'number' ? c.securityMoney : 0,
         remark: c.remark || '',
         createdAt: c.createdAt,
+        branchId: c.branchId,
+        branchName: c.branchName
       }));
       setCollections(mapped);
     } catch (err: any) {
@@ -171,15 +201,27 @@ const CollectionDue: React.FC = () => {
                 type="text"
                 placeholder="Search by student name..."
                 value={searchTerm}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)} // Added explicit type
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
                 className="flex-1 p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm md:text-base"
               />
               <input
                 type="month"
                 value={selectedMonth}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedMonth(e.target.value)} // Added explicit type
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedMonth(e.target.value)}
                 className="p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm md:text-base"
               />
+              <select
+                value={selectedBranchId || ''}
+                onChange={(e) => setSelectedBranchId(e.target.value ? Number(e.target.value) : null)}
+                className="p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-purple-300 text-sm md:text-base"
+              >
+                <option value="">All Branches</option>
+                {branches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </option>
+                ))}
+              </select>
             </motion.div>
 
             <motion.div
@@ -219,6 +261,7 @@ const CollectionDue: React.FC = () => {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Branch</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shift</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Fee</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cash</th>
@@ -234,7 +277,7 @@ const CollectionDue: React.FC = () => {
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredCollections.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-4 py-4 text-center text-gray-500">
+                      <td colSpan={12} className="px-4 py-4 text-center text-gray-500">
                         No collections found
                       </td>
                     </tr>
@@ -247,6 +290,7 @@ const CollectionDue: React.FC = () => {
                         transition={{ duration: 0.3 }}
                       >
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{collection.name}</td>
+                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{collection.branchName || 'N/A'}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">{collection.shiftTitle || 'N/A'}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">₹{collection.totalFee.toFixed(2)}</td>
                         <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800">₹{collection.cash.toFixed(2)}</td>
@@ -310,12 +354,12 @@ const CollectionDue: React.FC = () => {
                   <input
                     type="number"
                     value={paymentAmount}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPaymentAmount(e.target.value)} // Added explicit type
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPaymentAmount(e.target.value)}
                     placeholder="Enter payment amount"
                     className="w-full p-2 border rounded-md mb-4 focus:outline-none focus:ring-2 focus:ring-purple-300"
                     step="0.01"
                     min="0"
-                    max={selectedCollection.dueAmount.toString()} // Converted to string for max attribute
+                    max={selectedCollection.dueAmount.toString()}
                   />
                   <div className="flex justify-end space-x-2">
                     <button

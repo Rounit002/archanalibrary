@@ -1,6 +1,6 @@
 const { checkAdmin } = require('./auth');
 
-module.exports = (pool, bcrypt) => {
+module.exports = (pool) => {
   const router = require('express').Router();
 
   // Get current user profile
@@ -32,7 +32,7 @@ module.exports = (pool, bcrypt) => {
         return res.status(401).json({ message: 'Unauthorized' });
       }
       
-      const { full_name, email, current_password, new_password } = req.body;
+      const { full_name, email } = req.body;
       
       // Check if email exists for another user
       if (email) {
@@ -46,48 +46,19 @@ module.exports = (pool, bcrypt) => {
         }
       }
       
-      // If password change is requested
-      if (current_password && new_password) {
-        // Verify current password
-        const userResult = await pool.query('SELECT password FROM users WHERE id = $1', [req.session.user.id]);
-        const isPasswordValid = await bcrypt.compare(current_password, userResult.rows[0].password);
-        
-        if (!isPasswordValid) {
-          return res.status(400).json({ message: 'Current password is incorrect' });
-        }
-        
-        // Hash new password
-        const hashedPassword = await bcrypt.hash(new_password, 10);
-        
-        // Update user with new password
-        const result = await pool.query(
-          `UPDATE users SET 
-           full_name = COALESCE($1, full_name),
-           email = COALESCE($2, email),
-           password = $3
-           WHERE id = $4 RETURNING id, username, full_name, email, role`,
-          [full_name, email, hashedPassword, req.session.user.id]
-        );
-        
-        return res.json({ 
-          message: 'Profile updated successfully', 
-          user: result.rows[0] 
-        });
-      } else {
-        // Update without changing password
-        const result = await pool.query(
-          `UPDATE users SET 
-           full_name = COALESCE($1, full_name),
-           email = COALESCE($2, email)
-           WHERE id = $3 RETURNING id, username, full_name, email, role`,
-          [full_name, email, req.session.user.id]
-        );
-        
-        return res.json({ 
-          message: 'Profile updated successfully', 
-          user: result.rows[0] 
-        });
-      }
+      // Update without changing password
+      const result = await pool.query(
+        `UPDATE users SET 
+         full_name = COALESCE($1, full_name),
+         email = COALESCE($2, email)
+         WHERE id = $3 RETURNING id, username, full_name, email, role`,
+        [full_name, email, req.session.user.id]
+      );
+      
+      return res.json({ 
+        message: 'Profile updated successfully', 
+        user: result.rows[0] 
+      });
     } catch (err) {
       res.status(500).json({ message: 'Server error', error: err.message });
     }
@@ -112,15 +83,12 @@ module.exports = (pool, bcrypt) => {
         return res.status(400).json({ message: 'Username already exists' });
       }
 
-      // Hash password
-      const hashedPassword = await bcrypt.hash(password, 10);
-
       // Insert new user without permissions
       const result = await pool.query(
         `INSERT INTO users (username, password, role, full_name, email) 
          VALUES ($1, $2, $3, $4, $5) 
          RETURNING id, username, role`,
-        [username, hashedPassword, role, full_name || '', email || '']
+        [username, password, role, full_name || '', email || '']
       );
 
       res.status(201).json({ 

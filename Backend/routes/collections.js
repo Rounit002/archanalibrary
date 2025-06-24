@@ -17,20 +17,37 @@ module.exports = (pool) => {
           smh.online,
           smh.security_money,
           smh.remark,
-          smh.changed_at as created_at
+          smh.changed_at as created_at,
+          smh.branch_id,
+          b.name as branch_name
         FROM student_membership_history smh
         LEFT JOIN schedules sch ON smh.shift_id = sch.id
+        LEFT JOIN branches b ON smh.branch_id = b.id
       `;
       const params = [];
+      let paramIndex = 1;
+
       if (req.query.month) {
         const monthParam = req.query.month;
         if (!/^\d{4}-\d{2}$/.test(monthParam)) {
           return res.status(400).json({ message: 'Invalid month format. Use YYYY-MM' });
         }
         const [year, month] = monthParam.split('-');
-        query += ` WHERE EXTRACT(YEAR FROM smh.changed_at) = $1 AND EXTRACT(MONTH FROM smh.changed_at) = $2`;
+        query += ` WHERE EXTRACT(YEAR FROM smh.changed_at) = $${paramIndex} AND EXTRACT(MONTH FROM smh.changed_at) = $${paramIndex + 1}`;
         params.push(year, month);
+        paramIndex += 2;
       }
+
+      if (req.query.branchId) {
+        const branchId = parseInt(req.query.branchId, 10);
+        if (isNaN(branchId)) {
+          return res.status(400).json({ message: 'Invalid branch ID' });
+        }
+        query += (paramIndex > 1 ? ' AND' : ' WHERE') + ` smh.branch_id = $${paramIndex}`;
+        params.push(branchId);
+        paramIndex++;
+      }
+
       query += ` ORDER BY smh.name`;
       const result = await pool.query(query, params);
       const collections = result.rows.map(row => ({
@@ -46,6 +63,8 @@ module.exports = (pool) => {
         securityMoney: row.security_money !== null && row.security_money !== undefined ? parseFloat(row.security_money) : 0,
         remark: row.remark || '',
         createdAt: row.created_at,
+        branchId: row.branch_id,
+        branchName: row.branch_name
       }));
       res.json({ collections });
     } catch (err) {
@@ -133,7 +152,7 @@ module.exports = (pool) => {
         [new_cash, new_online, new_amount_paid, new_due_amount, studentId]
       );
 
-      // Fetch the updated history record with shift title
+      // Fetch the updated history record with shift title and branch name
       const updatedRes = await client.query(`
         SELECT 
           smh.id as history_id, 
@@ -147,9 +166,12 @@ module.exports = (pool) => {
           smh.online,
           smh.security_money,
           smh.remark,
-          smh.changed_at as created_at
+          smh.changed_at as created_at,
+          smh.branch_id,
+          b.name as branch_name
         FROM student_membership_history smh
         LEFT JOIN schedules sch ON smh.shift_id = sch.id
+        LEFT JOIN branches b ON smh.branch_id = b.id
         WHERE smh.id = $1
       `, [historyId]);
       const updatedHistory = updatedRes.rows[0];
@@ -172,6 +194,8 @@ module.exports = (pool) => {
           securityMoney: parseFloat(updatedHistory.security_money) || 0,
           remark: updatedHistory.remark || '',
           createdAt: updatedHistory.created_at,
+          branchId: updatedHistory.branch_id,
+          branchName: updatedHistory.branch_name
         }
       });
     } catch (err) {
