@@ -30,8 +30,9 @@ import Expenses from './pages/Expenses';
 import ProfitLoss from './pages/ProfitLoss';
 import HostelCollectionDue from './pages/HostelCollectionDue';
 import ExpiredHostelMemberships from './pages/ExpiredHostelMemberships';
-import ManageBranches from './pages/ManageBranches'; // New import
-import ProductsPage from './pages/ProductsPage'; // New import
+import ManageBranches from './pages/ManageBranches';
+import ProductsPage from './pages/ProductsPage';
+import InactiveStudents from './pages/InactiveStudents'; // New import
 
 const queryClient = new QueryClient();
 
@@ -52,6 +53,7 @@ function AppRoutes() {
       <Route path="/students/:id" element={<ProtectedRoute><StudentDetails /></ProtectedRoute>} />
       <Route path="/students/:id/edit" element={<ProtectedRoute><EditStudentForm /></ProtectedRoute>} />
       <Route path="/active-students" element={<ProtectedRoute><ActiveStudents /></ProtectedRoute>} />
+      <Route path="/inactive-students" element={<ProtectedRoute><InactiveStudents /></ProtectedRoute>} /> {/* New Route */}
       <Route path="/expired-memberships" element={<ProtectedRoute><ExpiredMemberships /></ProtectedRoute>} />
       <Route path="/expiring-memberships" element={<ProtectedRoute><ExpiringMembershipsPage /></ProtectedRoute>} />
       <Route path="/schedule" element={<ProtectedRoute><Schedule /></ProtectedRoute>} />
@@ -70,8 +72,8 @@ function AppRoutes() {
       <Route path="/collections" element={<ProtectedRoute><CollectionDue /></ProtectedRoute>} />
       <Route path="/expenses" element={<ProtectedRoute><Expenses /></ProtectedRoute>} />
       <Route path="/profit-loss" element={<ProtectedRoute><ProfitLoss /></ProtectedRoute>} />
-      <Route path="/branches" element={<ProtectedRoute><ManageBranches /></ProtectedRoute>} /> {/* New Route */}
-      <Route path="/products" element={<ProtectedRoute><ProductsPage /></ProtectedRoute>} /> {/* New Route */}
+      <Route path="/branches" element={<ProtectedRoute><ManageBranches /></ProtectedRoute>} />
+      <Route path="/products" element={<ProtectedRoute><ProductsPage /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

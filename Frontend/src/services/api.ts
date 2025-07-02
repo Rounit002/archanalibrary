@@ -37,7 +37,7 @@ interface Student {
   branchName?: string;
   membershipStart: string;
   membershipEnd: string;
-  status: 'active' | 'expired';
+  status: 'active' | 'expired' | 'deactivated'; // <-- Change this line
   totalFee: number;
   amountPaid: number;
   dueAmount: number;
@@ -53,6 +53,13 @@ interface Student {
     seatNumber: string;
     shiftTitle: string;
   }>;
+}
+
+interface StudentActivationData {
+  membership_start: string;
+  membership_end: string;
+  seat_id?: number | null;
+  shift_ids?: number[];
 }
 
 interface Collection {
@@ -531,6 +538,26 @@ const api = {
 
   deleteStudent: async (id: number): Promise<{ message: string; student: Student }> => {
     const response = await apiClient.delete(`/students/${id}`);
+    return response.data;
+  },
+
+  deactivateStudent: async (id: number): Promise<{ message: string; student: Student }> => {
+  try {
+    const response = await apiClient.put(`/students/${id}/deactivate`);
+    console.log('[api.ts deactivateStudent] Response received:', JSON.stringify(response.data, null, 2));
+    return response.data;
+  } catch (error: any) {
+    console.error('[api.ts deactivateStudent] Error:', {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    });
+    throw error;
+  }
+},
+
+ activateStudent: async (id: number, data: StudentActivationData): Promise<{ message: string; student: Student }> => {
+    const response = await apiClient.put(`/students/${id}/activate`, data);
     return response.data;
   },
 

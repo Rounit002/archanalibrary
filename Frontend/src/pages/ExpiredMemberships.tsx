@@ -76,7 +76,7 @@ const ExpiredMemberships = () => {
   const [seatOptions, setSeatOptions] = useState<{ value: number | null; label: string }[]>([]);
   const [selectedShifts, setSelectedShifts] = useState<{ value: number; label: string }[]>([]);
   const [selectedSeat, setSelectedSeat] = useState<{ value: number | null; label: string } | null>(null);
-  const [totalFee, setTotalFee] = useState<string>('');
+  const [totalFee, setTotalFee] = useState<string>('0');
   const [cash, setCash] = useState<string>('0');
   const [online, setOnline] = useState<string>('0');
   const [securityMoney, setSecurityMoney] = useState<string>('0');
@@ -93,7 +93,6 @@ const ExpiredMemberships = () => {
           api.getSchedules(),
         ]);
 
-        // Ensure students array is properly typed
         const typedStudents: Student[] = Array.isArray(studentsResp.students)
           ? studentsResp.students.map((s: any) => ({
               ...s,
@@ -128,15 +127,21 @@ const ExpiredMemberships = () => {
           const seatResponses = await Promise.all(seatPromises);
           const allSeatsPerShift = seatResponses.map((res) => res.seats as Seat[]);
 
-          const availableSeats = allSeatsPerShift.reduce((commonSeats, currentSeats) => {
-            return commonSeats.filter((seat) =>
-              currentSeats.some((cs) => cs.id === seat.id && (!cs.studentId || cs.studentId === selectedStudent.id))
-            );
-          }, allSeatsPerShift[0] || []);
+          const currentSeats = selectedStudent.assignments
+            ? selectedStudent.assignments.map((a) => a.seatId)
+            : [];
+
+          const allSeatsPerShiftFlat = allSeatsPerShift.flat();
+          const availableSeats = allSeatsPerShiftFlat.filter((seat) => 
+            !currentSeats.includes(seat.id) || seat.studentId === selectedStudent.id
+          );
 
           setSeatOptions([
             { value: null, label: 'None' },
-            ...availableSeats.map((seat) => ({ value: seat.id, label: seat.seatNumber })),
+            ...availableSeats.map((seat) => ({
+              value: seat.id,
+              label: seat.seatNumber || 'Unnamed Seat',
+            })),
           ]);
 
           if (selectedSeat && !availableSeats.some((seat) => seat.id === selectedSeat.value) && selectedSeat.value !== null) {
@@ -199,8 +204,8 @@ const ExpiredMemberships = () => {
   };
 
   const handleRenewSubmit = async () => {
-    if (!selectedStudent || !startDate || !endDate || !emailInput || !phoneInput || selectedShifts.length === 0 || !totalFee) {
-      toast.error('Please fill all required fields (Start Date, End Date, Email, Phone, Shifts, Total Fee)');
+    if (!selectedStudent || !startDate || !endDate || !phoneInput || selectedShifts.length === 0 || !totalFee) {
+      toast.error('Please fill all required fields (Start Date, End Date, Phone, Shifts, Total Fee)');
       return;
     }
 
@@ -209,49 +214,60 @@ const ExpiredMemberships = () => {
     const onlineNum = parseFloat(online) || 0;
     const securityMoneyNum = parseFloat(securityMoney) || 0;
 
-    if (isNaN(totalFeeNum) || totalFeeNum < 0 || isNaN(cashNum) || cashNum < 0 || isNaN(onlineNum) || onlineNum < 0 || isNaN(securityMoneyNum) || securityMoneyNum < 0) {
+    if (
+      isNaN(totalFeeNum) ||
+      totalFeeNum < 0 ||
+      isNaN(cashNum) ||
+      cashNum < 0 ||
+      isNaN(onlineNum) ||
+      onlineNum < 0 ||
+      isNaN(securityMoneyNum) ||
+      securityMoneyNum < 0
+    ) {
       toast.error('Financial values must be valid non-negative numbers');
       return;
     }
-
-    const dueAmount = totalFeeNum - (cashNum + onlineNum);
 
     try {
       const studentDetails = await api.getStudent(selectedStudent.id);
       const branchId = studentDetails.branchId;
 
-      await api.renewStudent(selectedStudent.id, {
+      const membershipData = {
         membershipStart: format(startDate, 'yyyy-MM-dd'),
         membershipEnd: format(endDate, 'yyyy-MM-dd'),
-        email: emailInput,
-        phone: phoneInput,
-        shiftIds: selectedShifts.map((s) => s.value),
+        email: emailInput || undefined,
+        phone: phoneInput || undefined,
+        branchId: branchId || undefined,
         seatId: selectedSeat ? selectedSeat.value : null,
+        shiftIds: selectedShifts.map((s) => s.value),
         totalFee: totalFeeNum,
-        amountPaid: cashNum + onlineNum,
-        dueAmount: dueAmount,
         cash: cashNum,
         online: onlineNum,
         securityMoney: securityMoneyNum,
         remark: remark.trim() || undefined,
-        branch_id: branchId, // Ensure branch_id is included
-      });
+      };
+
+      console.log('Sending renewal data:', membershipData); // Log the data being sent
+      const response = await api.renewStudent(selectedStudent.id, membershipData);
+      console.log('Renewal response:', response);
 
       toast.success(`Membership renewed for ${selectedStudent.name}`);
       setRenewDialogOpen(false);
 
       const resp = await api.getExpiredMemberships();
-      setStudents(resp.students.map((s: any) => ({
-        ...s,
-        email: s.email || null,
-        phone: s.phone || null,
-        branchId: s.branchId || null,
-        totalFee: s.totalFee || 0,
-        cash: s.cash || 0,
-        online: s.online || 0,
-        securityMoney: s.securityMoney || 0,
-        remark: s.remark || null,
-      })));
+      setStudents(
+        resp.students.map((s: any) => ({
+          ...s,
+          email: s.email || null,
+          phone: s.phone || null,
+          branchId: s.branchId || null,
+          totalFee: s.totalFee || 0,
+          cash: s.cash || 0,
+          online: s.online || 0,
+          securityMoney: s.securityMoney || 0,
+          remark: s.remark || null,
+        }))
+      );
     } catch (err: any) {
       console.error('Renew error:', err.response?.data || err.message);
       toast.error(err.response?.data?.message || 'Failed to renew membership. Please check the data and try again.');
@@ -324,7 +340,11 @@ const ExpiredMemberships = () => {
                           <Button
                             variant="destructive"
                             onClick={async () => {
-                              if (confirm('Are you sure you want to delete this student? This action cannot be undone.')) {
+                              if (
+                                confirm(
+                                  'Are you sure you want to delete this student? This action cannot be undone.'
+                                )
+                              ) {
                                 try {
                                   await api.deleteStudent(student.id);
                                   setStudents(students.filter((s) => s.id !== student.id));
@@ -444,7 +464,7 @@ const ExpiredMemberships = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm">Regestration Fee</label>
+                <label className="block text-sm">Registration Fee</label>
                 <input
                   className="w-full border rounded px-2 py-1"
                   type="number"

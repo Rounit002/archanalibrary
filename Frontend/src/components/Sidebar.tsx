@@ -1,7 +1,7 @@
 // Sidebar.tsx
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, UserPlus, Building2, Calendar, Clock, Grid, DollarSign, Wallet, ShoppingBag, BarChart2, Settings, ChevronRight, UserCheck, AlertTriangle, Menu, X, LogOut, MapPin, Package } from 'lucide-react';
+import { Home, UserPlus, Building2, Calendar, Clock, Grid, DollarSign, Wallet, ShoppingBag, BarChart2, Settings, ChevronRight, UserCheck, AlertTriangle, Menu, X, LogOut, MapPin, Package, Ban } from 'lucide-react'; // Added Ban import
 import { useMediaQuery } from 'react-responsive';
 import logo from './archanalogo.png';
 
@@ -28,8 +28,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
     { path: '/schedule', icon: <Calendar size={20} />, label: 'Schedule' },
     { path: '/shifts', icon: <Clock size={20} />, label: 'Shifts' },
     { path: '/seats', icon: <Grid size={20} />, label: 'Seats' },
-    { path: '/branches', icon: <MapPin size={20} />, label: 'Manage Branches' }, // New item
-    { path: '/products', icon: <Package size={20} />, label: 'Products' }, // New item
+    { path: '/branches', icon: <MapPin size={20} />, label: 'Manage Branches' },
+    { path: '/products', icon: <Package size={20} />, label: 'Products' },
     { path: '/transactions', icon: <DollarSign size={20} />, label: 'Transactions' },
     { path: '/collections', icon: <Wallet size={20} />, label: 'Collection & Due' },
     { path: '/expenses', icon: <ShoppingBag size={20} />, label: 'Expenses' },
@@ -151,6 +151,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
                     >
                       <UserCheck size={14} className="mr-1.5" />
                       Active Students
+                    </Link>
+                    <Link
+                      to="/inactive-students"
+                      className={`flex items-center py-2 px-3 rounded-md text-sm font-medium ${
+                        isActive('/inactive-students') ? 'bg-purple-50 text-purple-600' : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                      onClick={() => isMobile && setIsSidebarOpen(false)}
+                    >
+                      <Ban size={14} className="mr-1.5" /> {/* Ban icon for inactive */}
+                      Inactive Students
                     </Link>
                     <Link
                       to="/expired-memberships"

@@ -2438,3 +2438,43 @@
 {"level":"info","message":"Session table checked/initialized successfully","timestamp":"2025-06-24T17:45:42.208Z"}
 {"level":"info","message":"Admin user(s) already exist, skipping default admin creation.","timestamp":"2025-06-24T17:45:42.214Z"}
 {"level":"info","message":"Server running on port 3000","timestamp":"2025-06-24T17:45:42.246Z"}
+{"level":"info","message":"Database connected successfully","timestamp":"2025-07-02T19:21:54.027Z"}
+{"level":"info","message":"Session table checked/initialized successfully","timestamp":"2025-07-02T19:21:54.149Z"}
+{"level":"info","message":"Admin user(s) already exist, skipping default admin creation.","timestamp":"2025-07-02T19:21:54.199Z"}
+{"level":"info","message":"Server running on port 3000","timestamp":"2025-07-02T19:21:54.327Z"}
+{"level":"info","message":"Database connected successfully","timestamp":"2025-07-02T20:05:00.719Z"}
+{"level":"info","message":"Session table checked/initialized successfully","timestamp":"2025-07-02T20:05:00.746Z"}
+{"level":"info","message":"Admin user(s) already exist, skipping default admin creation.","timestamp":"2025-07-02T20:05:00.767Z"}
+{"level":"info","message":"Server running on port 3000","timestamp":"2025-07-02T20:05:00.820Z"}
+{"level":"info","message":"Database connected successfully","timestamp":"2025-07-02T20:27:26.533Z"}
+{"level":"info","message":"Session table checked/initialized successfully","timestamp":"2025-07-02T20:27:26.562Z"}
+{"level":"info","message":"Admin user(s) already exist, skipping default admin creation.","timestamp":"2025-07-02T20:27:26.580Z"}
+{"level":"info","message":"Server running on port 3000","timestamp":"2025-07-02T20:27:26.620Z"}
+{"level":"info","message":"Database connected successfully","timestamp":"2025-07-02T20:27:40.184Z"}
+{"level":"info","message":"Session table checked/initialized successfully","timestamp":"2025-07-02T20:27:40.231Z"}
+{"level":"info","message":"Admin user(s) already exist, skipping default admin creation.","timestamp":"2025-07-02T20:27:40.252Z"}
+{"level":"info","message":"Server running on port 3000","timestamp":"2025-07-02T20:27:40.333Z"}
+{"level":"info","message":"Database connected successfully","timestamp":"2025-07-02T21:13:40.871Z"}
+{"level":"info","message":"Session table checked/initialized successfully","timestamp":"2025-07-02T21:13:40.914Z"}
+{"level":"info","message":"Admin user(s) already exist, skipping default admin creation.","timestamp":"2025-07-02T21:13:40.935Z"}
+{"level":"info","message":"Server running on port 3000","timestamp":"2025-07-02T21:13:40.978Z"}
+{"level":"info","message":"Database connected successfully","timestamp":"2025-07-02T21:16:23.383Z"}
+{"level":"info","message":"Session table checked/initialized successfully","timestamp":"2025-07-02T21:16:23.415Z"}
+{"level":"info","message":"Admin user(s) already exist, skipping default admin creation.","timestamp":"2025-07-02T21:16:23.434Z"}
+{"level":"info","message":"Server running on port 3000","timestamp":"2025-07-02T21:16:23.493Z"}
+{"level":"info","message":"Session table checked/initialized successfully","timestamp":"2025-07-02T21:20:42.466Z"}
+{"level":"info","message":"Admin user(s) already exist, skipping default admin creation.","timestamp":"2025-07-02T21:20:42.478Z"}
+{"level":"info","message":"Server running on port 3000","timestamp":"2025-07-02T21:20:42.511Z"}
+{"level":"info","message":"Database connected successfully","timestamp":"2025-07-02T21:20:42.532Z"}
+{"level":"info","message":"Database connected successfully","timestamp":"2025-07-02T21:24:07.636Z"}
+{"level":"info","message":"Session table checked/initialized successfully","timestamp":"2025-07-02T21:24:07.656Z"}
+{"level":"info","message":"Admin user(s) already exist, skipping default admin creation.","timestamp":"2025-07-02T21:24:07.666Z"}
+{"level":"info","message":"Server running on port 3000","timestamp":"2025-07-02T21:24:07.696Z"}
+{"level":"info","message":"Database connected successfully","timestamp":"2025-07-02T21:33:32.323Z"}
+{"level":"info","message":"Session table checked/initialized successfully","timestamp":"2025-07-02T21:33:32.355Z"}
+{"level":"info","message":"Admin user(s) already exist, skipping default admin creation.","timestamp":"2025-07-02T21:33:32.372Z"}
+{"level":"info","message":"Server running on port 3000","timestamp":"2025-07-02T21:33:32.419Z"}
+{"level":"info","message":"Database connected successfully","timestamp":"2025-07-02T21:33:36.760Z"}
+{"level":"info","message":"Session table checked/initialized successfully","timestamp":"2025-07-02T21:33:36.804Z"}
+{"level":"info","message":"Admin user(s) already exist, skipping default admin creation.","timestamp":"2025-07-02T21:33:36.822Z"}
+{"level":"info","message":"Server running on port 3000","timestamp":"2025-07-02T21:33:36.884Z"}
