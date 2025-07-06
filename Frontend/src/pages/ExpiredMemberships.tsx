@@ -8,9 +8,9 @@ import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Calendar } from '@/components/ui/calendar';
@@ -287,14 +287,14 @@ const ExpiredMemberships = () => {
   return (
     <div className="flex h-screen bg-gray-50">
       <Sidebar />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col">
         <Navbar />
-        <div className="p-4">
+        <div className="flex-1 p-4 overflow-y-auto">
           <h2 className="text-xl font-semibold mb-4">Expired Memberships</h2>
           <div className="relative mb-4">
             <Search className="absolute left-3 top-3 text-gray-400" />
             <input
-              className="pl-10 pr-4 py-2 border rounded"
+              className="pl-10 pr-4 py-2 border rounded w-full"
               placeholder="Search by name or phone"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -303,77 +303,79 @@ const ExpiredMemberships = () => {
           {loading ? (
             <p>Loading...</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Expiry</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {students
-                  .filter(
-                    (s) =>
-                      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      s.phone?.includes(searchTerm)
-                  )
-                  .map((student) => (
-                    <TableRow key={student.id}>
-                      <TableCell>{student.name}</TableCell>
-                      <TableCell>{student.email || 'N/A'}</TableCell>
-                      <TableCell>{student.phone || 'N/A'}</TableCell>
-                      <TableCell>{formatDate(student.membershipEnd)}</TableCell>
-                      <TableCell className="space-x-2">
-                        <Button onClick={() => navigate(`/students/${student.id}`)} variant="outline">
-                          <Eye size={16} />
-                        </Button>
-                        {user?.role === 'admin' && (
-                          <Button onClick={() => handleRenewClick(student)}>
-                            <ChevronRight size={16} /> Renew
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Expiry</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {students
+                    .filter(
+                      (s) =>
+                        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        s.phone?.includes(searchTerm)
+                    )
+                    .map((student) => (
+                      <TableRow key={student.id}>
+                        <TableCell>{student.name}</TableCell>
+                        <TableCell>{student.email || 'N/A'}</TableCell>
+                        <TableCell>{student.phone || 'N/A'}</TableCell>
+                        <TableCell>{formatDate(student.membershipEnd)}</TableCell>
+                        <TableCell className="space-x-2">
+                          <Button onClick={() => navigate(`/students/${student.id}`)} variant="outline">
+                            <Eye size={16} />
                           </Button>
-                        )}
-                        {(user?.role === 'admin' ||
-                          (hasPermissions(user) && user.permissions.includes('manage_students'))) && (
-                          <Button
-                            variant="destructive"
-                            onClick={async () => {
-                              if (
-                                confirm(
-                                  'Are you sure you want to delete this student? This action cannot be undone.'
-                                )
-                              ) {
-                                try {
-                                  await api.deleteStudent(student.id);
-                                  setStudents(students.filter((s) => s.id !== student.id));
-                                  toast.success('Student deleted successfully.');
-                                } catch (err: any) {
-                                  toast.error(err.message || 'Failed to delete student.');
+                          {user?.role === 'admin' && (
+                            <Button onClick={() => handleRenewClick(student)}>
+                              <ChevronRight size={16} /> Renew
+                            </Button>
+                          )}
+                          {(user?.role === 'admin' ||
+                            (hasPermissions(user) && user.permissions.includes('manage_students'))) && (
+                            <Button
+                              variant="destructive"
+                              onClick={async () => {
+                                if (
+                                  confirm(
+                                    'Are you sure you want to delete this student? This action cannot be undone.'
+                                  )
+                                ) {
+                                  try {
+                                    await api.deleteStudent(student.id);
+                                    setStudents(students.filter((s) => s.id !== student.id));
+                                    toast.success('Student deleted successfully.');
+                                  } catch (err: any) {
+                                    toast.error(err.message || 'Failed to delete student.');
+                                  }
                                 }
-                              }
-                            }}
-                          >
-                            <Trash2 size={16} />
-                          </Button>
-                        )}
-                        {student.phone && (
-                          <Button
-                            variant="outline"
-                            onClick={() => {
-                              const cleanPhone = student.phone!.replace(/[^\d]/g, '');
-                              window.open(`https://wa.me/${cleanPhone}`, '_blank');
-                            }}
-                          >
-                            <MessageCircle size={16} />
-                          </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-              </TableBody>
-            </Table>
+                              }}
+                            >
+                              <Trash2 size={16} />
+                            </Button>
+                          )}
+                          {student.phone && (
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                const cleanPhone = student.phone!.replace(/[^\d]/g, '');
+                                window.open(`https://wa.me/${cleanPhone}`, '_blank');
+                              }}
+                            >
+                              <MessageCircle size={16} />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </div>
 
