@@ -66,7 +66,10 @@ module.exports = (pool) => {
       let query = withCalculatedStatus();
       const params = [];
 
-      query += ` WHERE s.status = 'active' AND s.membership_end >= CURRENT_DATE`; // Explicitly check 'active' status and membership
+      // FIX: The WHERE clause is corrected to rely on the membership date, not the potentially stale 'status' column.
+      // This ensures all students with a current membership who are not deactivated are counted as active.
+      query += ` WHERE s.status != 'deactivated' AND s.membership_end >= CURRENT_DATE`;
+      
       if (branchIdNum) {
         query += ` AND s.branch_id = $1`;
         params.push(branchIdNum);
@@ -94,39 +97,58 @@ module.exports = (pool) => {
   });
 
   // GET expired students
-  router.get('/expired', checkAdminOrStaff, async (req, res) => {
-    try {
-      const { branchId } = req.query;
-      const branchIdNum = branchId ? parseInt(branchId, 10) : null;
-      let query = withCalculatedStatus();
-      const params = [];
+router.get('/expired', checkAdminOrStaff, async (req, res) => {
+  try {
+    const { branchId } = req.query;
+    const branchIdNum = branchId ? parseInt(branchId, 10) : null;
+    let query = withCalculatedStatus(`
+      s.id,
+      s.name,
+      s.email,
+      s.phone,
+      TO_CHAR(s.membership_end, 'YYYY-MM-DD') AS "membershipEnd",
+      s.membership_start,
+      s.total_fee,
+      s.cash,
+      s.online,
+      s.security_money,
+      s.remark,
+      s.branch_id AS "branchId",
+      (SELECT seats.seat_number
+       FROM seat_assignments sa
+       LEFT JOIN seats ON sa.seat_id = seats.id
+       WHERE sa.student_id = s.id
+       ORDER BY sa.id
+       LIMIT 1) AS "seatNumber"
+    `);
+    const params = [];
 
-      query += ` WHERE s.status != 'deactivated' AND s.membership_end < CURRENT_DATE`; // Exclude deactivated students
-      if (branchIdNum) {
-        query += ` AND s.branch_id = $1`;
-        params.push(branchIdNum);
-      }
-      query += ` ORDER BY s.name`;
-
-      const result = await pool.query(query, params);
-      const students = result.rows.map(student => ({
-        ...student,
-        membership_start: new Date(student.membership_start).toISOString().split('T')[0],
-        membership_end: new Date(student.membership_end).toISOString().split('T')[0],
-        total_fee: parseFloat(student.total_fee || 0),
-        amount_paid: parseFloat(student.amount_paid || 0),
-        due_amount: parseFloat(student.due_amount || 0),
-        cash: parseFloat(student.cash || 0),
-        online: parseFloat(student.online || 0),
-        security_money: parseFloat(student.security_money || 0),
-        remark: student.remark || '',
-      }));
-      res.json({ students });
-    } catch (err) {
-      console.error('Error in students/expired route:', err.stack);
-      res.status(500).json({ message: 'Server error', error: err.message });
+    query += ` WHERE s.status != 'deactivated' AND s.membership_end < CURRENT_DATE`; // Exclude deactivated students
+    if (branchIdNum) {
+      query += ` AND s.branch_id = $1`;
+      params.push(branchIdNum);
     }
-  });
+    query += ` ORDER BY s.name`;
+
+    const result = await pool.query(query, params);
+    const students = result.rows.map(student => ({
+      ...student,
+      membership_start: student.membership_start ? new Date(student.membership_start).toISOString().split('T')[0] : null,
+      total_fee: parseFloat(student.total_fee || 0),
+      amount_paid: parseFloat(student.amount_paid || 0),
+      due_amount: parseFloat(student.due_amount || 0),
+      cash: parseFloat(student.cash || 0),
+      online: parseFloat(student.online || 0),
+      security_money: parseFloat(student.security_money || 0),
+      remark: student.remark || '',
+    }));
+    console.log(JSON.stringify(students, null, 2)); // Log to verify membershipEnd
+    res.json({ students });
+  } catch (err) {
+    console.error('Error in students/expired route:', err.stack);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
 
   // GET students expiring soon
   router.get('/expiring-soon', checkAdminOrStaff, async (req, res) => {
@@ -603,29 +625,7 @@ module.exports = (pool) => {
             membershipId
           ]
         );
-      } else {
-        console.warn(`No membership history found for student ${id}, inserting new record`);
-        const historyInsert = await client.query(
-          `INSERT INTO student_membership_history (
-            student_id, name, email, phone, address,
-            membership_start, membership_end, status,
-            total_fee, amount_paid, due_amount,
-            cash, online, security_money, remark,
-            seat_id, branch_id,
-            changed_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
-          RETURNING id`,
-          [
-            id, name, email, phone, address,
-            membership_start, membership_end, newStatus, // Use newStatus
-            totalFeeValue, amountPaidValue, dueAmountValue,
-            cashValue, onlineValue, securityMoneyValue, remark || null,
-            seatIdNum, branchIdNum
-          ]
-        );
-        membershipId = historyInsert.rows[0].id;
-      }
-
+      } else{console.log("No membership history found.")}
       // Update seat_assignments: delete all and re-insert
       await client.query('DELETE FROM seat_assignments WHERE student_id = $1', [id]);
       if (shiftIdsNum.length > 0) {
