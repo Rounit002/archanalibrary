@@ -20,7 +20,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import Select from 'react-select';
 
-// Define interfaces based on API responses
+// Define interfaces
 interface Assignment {
   seatId: number | null;
   shiftId: number;
@@ -33,7 +33,7 @@ interface Student {
   name: string;
   email: string | null;
   phone: string | null;
-  membershipEnd: string;
+  membershipEnd: string; // Ensure this matches the backend alias
   shiftIds?: number[];
   shiftTitles?: string[];
   seatId?: number | null;
@@ -59,7 +59,12 @@ const hasPermissions = (user: any): user is { permissions: string[] } => {
 
 const formatDate = (dateString: string | undefined): string => {
   if (!dateString) return 'N/A';
-  return new Date(dateString).toISOString().split('T')[0];
+  try {
+    return new Date(dateString).toISOString().split('T')[0];
+  } catch (e) {
+    console.error('Invalid date format:', dateString, e);
+    return 'N/A';
+  }
 };
 
 const ExpiredMemberships = () => {
@@ -92,13 +97,14 @@ const ExpiredMemberships = () => {
           api.getExpiredMemberships(),
           api.getSchedules(),
         ]);
-
+        console.log('API Response for Expired Members:', studentsResp); // Debug log
         const typedStudents: Student[] = Array.isArray(studentsResp.students)
           ? studentsResp.students.map((s: any) => ({
               ...s,
               email: s.email || null,
               phone: s.phone || null,
               branchId: s.branchId || null,
+              membershipEnd: s.membershipEnd || 'N/A', // Fallback to 'N/A' if missing
               totalFee: s.totalFee || 0,
               cash: s.cash || 0,
               online: s.online || 0,
@@ -106,7 +112,6 @@ const ExpiredMemberships = () => {
               remark: s.remark || null,
             }))
           : [];
-
         setStudents(typedStudents);
         setShiftOptions(shiftsResp.schedules.map((shift: any) => ({ value: shift.id, label: shift.title })));
       } catch (e: any) {
@@ -247,7 +252,7 @@ const ExpiredMemberships = () => {
         remark: remark.trim() || undefined,
       };
 
-      console.log('Sending renewal data:', membershipData); // Log the data being sent
+      console.log('Sending renewal data:', membershipData);
       const response = await api.renewStudent(selectedStudent.id, membershipData);
       console.log('Renewal response:', response);
 
@@ -255,12 +260,14 @@ const ExpiredMemberships = () => {
       setRenewDialogOpen(false);
 
       const resp = await api.getExpiredMemberships();
+      console.log('Updated Expired Members Response:', resp); // Debug log
       setStudents(
         resp.students.map((s: any) => ({
           ...s,
           email: s.email || null,
           phone: s.phone || null,
           branchId: s.branchId || null,
+          membershipEnd: s.membershipEnd || 'N/A', // Fallback to 'N/A' if missing
           totalFee: s.totalFee || 0,
           cash: s.cash || 0,
           online: s.online || 0,
@@ -308,8 +315,8 @@ const ExpiredMemberships = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
+                    <TableHead>Seat Number</TableHead>
                     <TableHead>Expiry</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
@@ -324,8 +331,8 @@ const ExpiredMemberships = () => {
                     .map((student) => (
                       <TableRow key={student.id}>
                         <TableCell>{student.name}</TableCell>
-                        <TableCell>{student.email || 'N/A'}</TableCell>
                         <TableCell>{student.phone || 'N/A'}</TableCell>
+                        <TableCell>{student.seatNumber || 'N/A'}</TableCell>
                         <TableCell>{formatDate(student.membershipEnd)}</TableCell>
                         <TableCell className="space-x-2">
                           <Button onClick={() => navigate(`/students/${student.id}`)} variant="outline">
