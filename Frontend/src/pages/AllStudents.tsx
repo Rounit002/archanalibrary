@@ -58,21 +58,17 @@ const AllStudents = () => {
       try {
         setLoading(true);
         const response = await api.getStudents(fromDate || undefined, toDate || undefined, selectedBranchId);
-        const updatedStudents = response.students.map((student: any) => {
-          const membershipEndDate = new Date(student.membershipEnd);
-          const currentDate = new Date();
-          const isExpired = membershipEndDate < currentDate;
-          return {
-            ...student,
-            status: isExpired ? 'expired' : student.status,
-            createdAt: student.createdAt || 'N/A',
-          };
-        });
+        // FIX: Remove client-side status recalculation.
+        // The backend now provides the correct status, so we can use it directly.
+        const updatedStudents = response.students.map((student: any) => ({
+          ...student,
+          createdAt: student.createdAt || 'N/A', // Keep fallback for safety
+        }));
         setStudents(updatedStudents);
-        setLoading(false);
       } catch (error: any) {
         console.error('Failed to fetch students:', error.message);
         toast.error('Failed to fetch students');
+      } finally {
         setLoading(false);
       }
     };
@@ -92,8 +88,9 @@ const AllStudents = () => {
   const sortedStudents = [...students].sort((a, b) => {
     const dateA = new Date(a.createdAt);
     const dateB = new Date(b.createdAt);
-    const timeA = isNaN(dateA.getTime()) ? new Date().getTime() : dateA.getTime();
-    const timeB = isNaN(dateB.getTime()) ? new Date().getTime() : dateB.getTime();
+    // Fallback for any invalid date strings
+    const timeA = isNaN(dateA.getTime()) ? 0 : dateA.getTime();
+    const timeB = isNaN(dateB.getTime()) ? 0 : dateB.getTime();
     return sortDirection === 'asc' ? timeA - timeB : timeB - timeA;
   });
 
@@ -127,32 +124,15 @@ const AllStudents = () => {
   const handleDeactivate = async (id: number) => {
     if (window.confirm('Are you sure you want to deactivate this student? This will remove their seat and hide them from active lists.')) {
       try {
-        const response = await api.deactivateStudent(id);
-        console.log('Deactivation response:', response);
-        const fetchStudents = async () => {
-          try {
-            setLoading(true);
-            const response = await api.getStudents(fromDate || undefined, toDate || undefined, selectedBranchId);
-            const updatedStudents = response.students.map((student: any) => {
-              const membershipEndDate = new Date(student.membershipEnd);
-              const currentDate = new Date();
-              const isExpired = membershipEndDate < currentDate;
-              return {
-                ...student,
-                status: isExpired ? 'expired' : student.status,
-                createdAt: student.createdAt || 'N/A',
-              };
-            });
-            setStudents(updatedStudents);
-            setLoading(false);
-            toast.success('Student deactivated successfully');
-          } catch (error: any) {
-            console.error('Failed to refresh students after deactivation:', error.message);
-            toast.error('Failed to refresh student list');
-            setLoading(false);
-          }
-        };
-        fetchStudents();
+        await api.deactivateStudent(id);
+        toast.success('Student deactivated successfully');
+        // Re-fetch the student list to reflect the change
+        const response = await api.getStudents(fromDate || undefined, toDate || undefined, selectedBranchId);
+        const updatedStudents = response.students.map((student: any) => ({
+            ...student,
+            createdAt: student.createdAt || 'N/A',
+        }));
+        setStudents(updatedStudents);
       } catch (error: any) {
         console.error('Failed to deactivate student:', error.message);
         toast.error(`Failed to deactivate student: ${error.message}`);
@@ -309,11 +289,7 @@ const AllStudents = () => {
                         ) : (
                           <TableRow>
                             <TableCell colSpan={7} className="text-center py-8 text-gray-500">
-                              {selectedBranchId && selectedBranchName
-                                ? `No students found for branch: ${selectedBranchName}`
-                                : fromDate && toDate
-                                ? 'No students found for the selected date range.'
-                                : 'No students available.'}
+                              No students found.
                             </TableCell>
                           </TableRow>
                         )}
