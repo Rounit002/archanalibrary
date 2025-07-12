@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 import Sidebar from '../components/Sidebar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import api, { Branch } from '../services/api'; // Removed StudentSummary since it's not defined in api.ts
+import api, { Branch } from '../services/api';
 import { Search, ChevronLeft, ChevronRight, Trash2, Eye, ArrowUp, ArrowDown, Ban } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
@@ -58,7 +58,7 @@ const AllStudents = () => {
       try {
         setLoading(true);
         const response = await api.getStudents(fromDate || undefined, toDate || undefined, selectedBranchId);
-        const updatedStudents = response.students.map((student: any) => { // Using 'any' temporarily; replace with proper type if available
+        const updatedStudents = response.students.map((student: any) => {
           const membershipEndDate = new Date(student.membershipEnd);
           const currentDate = new Date();
           const isExpired = membershipEndDate < currentDate;
@@ -67,7 +67,7 @@ const AllStudents = () => {
             status: isExpired ? 'expired' : student.status,
             createdAt: student.createdAt || 'N/A',
           };
-        }).filter(student => student.status === 'active'); // Only show active students
+        });
         setStudents(updatedStudents);
         setLoading(false);
       } catch (error: any) {
@@ -127,9 +127,8 @@ const AllStudents = () => {
   const handleDeactivate = async (id: number) => {
     if (window.confirm('Are you sure you want to deactivate this student? This will remove their seat and hide them from active lists.')) {
       try {
-        const response = await api.deactivateStudent(id); // Call the deactivate API
-        console.log('Deactivation response:', response); // Log response for debugging
-        // Instead of removing, refresh the student list to reflect the updated status
+        const response = await api.deactivateStudent(id);
+        console.log('Deactivation response:', response);
         const fetchStudents = async () => {
           try {
             setLoading(true);
@@ -143,7 +142,7 @@ const AllStudents = () => {
                 status: isExpired ? 'expired' : student.status,
                 createdAt: student.createdAt || 'N/A',
               };
-            }).filter(student => student.status === 'active'); // Only active students
+            });
             setStudents(updatedStudents);
             setLoading(false);
             toast.success('Student deactivated successfully');
@@ -175,7 +174,7 @@ const AllStudents = () => {
           <div className="max-w-7xl mx-auto">
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-gray-800">All Students</h1>
-              <p className="text-gray-500">Manage all your active students</p>
+              <p className="text-gray-500">Manage all your students (Active, Expired, Deactivated)</p>
             </div>
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-gray-200 flex flex-col md:flex-row items-start md:items-center justify-between space-y-2 md:space-y-0">
@@ -239,7 +238,7 @@ const AllStudents = () => {
                     ) : fromDate && toDate ? (
                       <p>Showing students added from {fromDate} to {toDate}</p>
                     ) : (
-                      <p>Showing all active students</p>
+                      <p>Showing all students</p>
                     )}
                   </div>
                   <div className="overflow-x-auto">
@@ -272,10 +271,12 @@ const AllStudents = () => {
                               <TableCell>
                                 <span
                                   className={`px-2 py-1 rounded-full text-xs ${
-                                    student.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                                    student.status === 'active' ? 'bg-green-100 text-green-800' :
+                                    student.status === 'expired' ? 'bg-red-100 text-red-800' :
+                                    'bg-yellow-100 text-yellow-800'
                                   }`}
                                 >
-                                  {student.status === 'active' ? 'Active' : 'Expired'}
+                                  {student.status.charAt(0).toUpperCase() + student.status.slice(1)}
                                 </span>
                               </TableCell>
                               <TableCell className="hidden md:table-cell">{formatDate(student.membershipEnd)}</TableCell>
@@ -294,12 +295,14 @@ const AllStudents = () => {
                                 >
                                   <Trash2 size={16} />
                                 </button>
-                                <button
-                                  onClick={() => handleDeactivate(student.id)}
-                                  className="text-yellow-600 hover:text-yellow-800 p-2"
-                                >
-                                  <Ban size={16} />
-                                </button>
+                                {student.status === 'active' && (
+                                  <button
+                                    onClick={() => handleDeactivate(student.id)}
+                                    className="text-yellow-600 hover:text-yellow-800 p-2"
+                                  >
+                                    <Ban size={16} />
+                                  </button>
+                                )}
                               </TableCell>
                             </TableRow>
                           ))
@@ -310,7 +313,7 @@ const AllStudents = () => {
                                 ? `No students found for branch: ${selectedBranchName}`
                                 : fromDate && toDate
                                 ? 'No students found for the selected date range.'
-                                : 'No active students available.'}
+                                : 'No students available.'}
                             </TableCell>
                           </TableRow>
                         )}

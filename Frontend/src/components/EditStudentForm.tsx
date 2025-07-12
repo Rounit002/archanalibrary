@@ -17,7 +17,7 @@ interface Student {
   branchName?: string;
   membershipStart: string;
   membershipEnd: string;
-  status: 'active' | 'expired';
+  status: 'active' | 'expired' | 'deactivated';
   totalFee: number;
   amountPaid: number;
   dueAmount: number;
@@ -38,7 +38,7 @@ interface Student {
 interface Schedule {
   id: number;
   title: string;
-  description: string | null;
+  description?: string | null;
   time: string;
   eventDate: string;
 }
@@ -96,6 +96,11 @@ interface UpdateStudentPayload {
   remark: string;
 }
 
+interface SelectOption {
+  value: number | null;
+  label: string;
+}
+
 const EditStudentForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -121,6 +126,9 @@ const EditStudentForm: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadingSeats, setLoadingSeats] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Add state to track selected branch
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
 
   // Parse id to number
   const studentId = id ? parseInt(id, 10) : NaN;
@@ -159,6 +167,7 @@ const EditStudentForm: React.FC = () => {
         });
         setShifts(shiftsResponse.schedules as Schedule[]);
         setBranches(branchesResponse);
+        setSelectedBranchId(studentResponse.branchId || null); // Set initial branch
       } catch (error: any) {
         console.error('Failed to fetch data:', error);
         const errorMessage =
@@ -173,56 +182,66 @@ const EditStudentForm: React.FC = () => {
     fetchStudentShiftsAndBranches();
   }, [studentId]);
 
+  // Fetch seats based on selected branch
   useEffect(() => {
     const fetchSeats = async () => {
-      if (formData.shiftIds.length > 0) {
+      if (selectedBranchId) {
         setLoadingSeats(true);
         try {
-          const seatPromises = formData.shiftIds.map((shiftId) =>
-            api.getSeats({ shiftId })
-          );
-          const seatResponses = await Promise.all(seatPromises);
-          const allSeatsPerShift = seatResponses.map((res) => res.seats as Seat[]);
-
-          // Find seats available for all selected shifts
-          const availableSeats = allSeatsPerShift.reduce((commonSeats, currentSeats) => {
-            return commonSeats.filter((seat) =>
-              currentSeats.some((cs) => {
-                const shift = cs.shifts.find((s) => s.shiftId === seat.shifts[0].shiftId);
-                return cs.id === seat.id && (!shift?.isAssigned || seat.id === formData.seatId);
-              })
-            );
-          }, allSeatsPerShift[0] || []);
-
-          setSeats(availableSeats);
-
-          // Reset seatId if it's not in the available seats
-          if (formData.seatId && !availableSeats.some((seat) => seat.id === formData.seatId)) {
+          const seatsResponse = await api.getSeats({ branchId: selectedBranchId });
+          setSeats(seatsResponse.seats.filter(seat => seat.branchId === selectedBranchId));
+          // Reset seatId if it doesn't belong to the new branch
+          if (formData.seatId && !seatsResponse.seats.some(seat => seat.id === formData.seatId && seat.branchId === selectedBranchId)) {
             setFormData((prev) => ({ ...prev, seatId: null }));
           }
         } catch (error: any) {
           console.error('Failed to fetch seats:', error);
-          const errorMessage =
-            error.response?.data?.message || error.message || 'Failed to load seats';
+          const errorMessage = error.response?.data?.message || error.message || 'Failed to load seats';
           toast.error(errorMessage);
         } finally {
           setLoadingSeats(false);
         }
       } else {
         setSeats([]);
-        setFormData((prev) => ({ ...prev, seatId: null }));
+        setFormData((prev) => ({ ...prev, seatId: null, shiftIds: [] }));
       }
     };
     fetchSeats();
-  }, [formData.shiftIds, formData.seatId]);
+  }, [selectedBranchId]);
+
+  useEffect(() => {
+    const fetchAvailableShifts = async () => {
+      if (formData.seatId && selectedBranchId) {
+        setLoadingSeats(true);
+        try {
+          const availableShiftsResponse = await api.getAvailableShifts(formData.seatId);
+          setShifts(availableShiftsResponse.availableShifts);
+        } catch (error: any) {
+          console.error('Failed to fetch available shifts:', error);
+          const errorMessage = error.response?.data?.message || error.message || 'Failed to load available shifts';
+          toast.error(errorMessage);
+        } finally {
+          setLoadingSeats(false);
+        }
+      } else {
+        // Reset to all shifts if no seat is selected
+        setShifts(shifts);
+      }
+    };
+    fetchAvailableShifts();
+  }, [formData.seatId, selectedBranchId]);
 
   const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (name === 'branchId') {
+      const newBranchId = value ? parseInt(value, 10) : null;
+      setSelectedBranchId(newBranchId); // Update selected branch
+      setFormData((prev) => ({ ...prev, [name]: newBranchId, seatId: null, shiftIds: [] }));
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   const shiftOptions = shifts.map((shift) => ({
@@ -234,6 +253,11 @@ const EditStudentForm: React.FC = () => {
     { value: null, label: 'None' },
     ...seats.map((seat) => ({ value: seat.id, label: seat.seatNumber })),
   ];
+
+  const branchOptions = branches.map((branch) => ({
+    value: branch.id,
+    label: branch.name,
+  }));
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -468,12 +492,7 @@ const EditStudentForm: React.FC = () => {
               id="branchId"
               name="branchId"
               value={String(formData.branchId ?? '')}
-              onChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  branchId: e.target.value ? parseInt(e.target.value, 10) : null,
-                }))
-              }
+              onChange={handleChange}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-300"
             >
               <option value="">-- Select Branch --</option>
