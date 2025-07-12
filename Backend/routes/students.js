@@ -622,29 +622,7 @@ router.get('/expired', checkAdminOrStaff, async (req, res) => {
             membershipId
           ]
         );
-      } else {
-        console.warn(`No membership history found for student ${id}, inserting new record`);
-        const historyInsert = await client.query(
-          `INSERT INTO student_membership_history (
-            student_id, name, email, phone, address,
-            membership_start, membership_end, status,
-            total_fee, amount_paid, due_amount,
-            cash, online, security_money, remark,
-            seat_id, branch_id,
-            changed_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
-          RETURNING id`,
-          [
-            id, name, email, phone, address,
-            membership_start, membership_end, newStatus, // Use newStatus
-            totalFeeValue, amountPaidValue, dueAmountValue,
-            cashValue, onlineValue, securityMoneyValue, remark || null,
-            seatIdNum, branchIdNum
-          ]
-        );
-        membershipId = historyInsert.rows[0].id;
-      }
-
+      } else{console.log("No membership history found.")}
       // Update seat_assignments: delete all and re-insert
       await client.query('DELETE FROM seat_assignments WHERE student_id = $1', [id]);
       if (shiftIdsNum.length > 0) {
