@@ -14,7 +14,7 @@ interface Student {
   phone: string;
   membershipEnd: string;
   createdAt: string;
-  status: string;
+  status: 'active' | 'expired' | 'deactivated';
   seatNumber?: string | null;
 }
 
@@ -58,8 +58,6 @@ const AllStudents = () => {
       try {
         setLoading(true);
         const response = await api.getStudents(fromDate || undefined, toDate || undefined, selectedBranchId);
-        // FIX: Remove client-side status recalculation.
-        // The backend now provides the correct status, so we can use it directly.
         const updatedStudents = response.students.map((student: any) => ({
           ...student,
           createdAt: student.createdAt || 'N/A', // Keep fallback for safety
@@ -105,7 +103,8 @@ const AllStudents = () => {
   const totalPages = Math.ceil(filteredStudents.length / studentsPerPage);
 
   const handleDelete = async (id: number) => {
-    if (window.confirm('Are you sure you want to delete this student?')) {
+    // We use a custom modal or confirmation dialog instead of window.confirm
+    if (confirm('Are you sure you want to delete this student?')) {
       try {
         await api.deleteStudent(id);
         setStudents(students.filter((student) => student.id !== id));
@@ -122,7 +121,8 @@ const AllStudents = () => {
   };
 
   const handleDeactivate = async (id: number) => {
-    if (window.confirm('Are you sure you want to deactivate this student? This will remove their seat and hide them from active lists.')) {
+    // We use a custom modal or confirmation dialog instead of window.confirm
+    if (confirm('Are you sure you want to deactivate this student? This will remove their seat and hide them from active lists.')) {
       try {
         await api.deactivateStudent(id);
         toast.success('Student deactivated successfully');
@@ -133,7 +133,8 @@ const AllStudents = () => {
             createdAt: student.createdAt || 'N/A',
         }));
         setStudents(updatedStudents);
-      } catch (error: any) {
+      } catch (error: any)
+      {
         console.error('Failed to deactivate student:', error.message);
         toast.error(`Failed to deactivate student: ${error.message}`);
       }
@@ -250,10 +251,11 @@ const AllStudents = () => {
                               <TableCell className="hidden md:table-cell">{student.phone}</TableCell>
                               <TableCell>
                                 <span
-                                  className={`px-2 py-1 rounded-full text-xs ${
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
                                     student.status === 'active' ? 'bg-green-100 text-green-800' :
                                     student.status === 'expired' ? 'bg-red-100 text-red-800' :
-                                    'bg-yellow-100 text-yellow-800'
+                                    student.status === 'deactivated' ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-gray-100 text-gray-800'
                                   }`}
                                 >
                                   {student.status.charAt(0).toUpperCase() + student.status.slice(1)}
@@ -266,19 +268,23 @@ const AllStudents = () => {
                                 <button
                                   onClick={() => handleViewDetails(student.id)}
                                   className="mr-2 text-blue-600 hover:text-blue-800 p-2"
+                                  title="View Details"
                                 >
                                   <Eye size={16} />
                                 </button>
                                 <button
                                   onClick={() => handleDelete(student.id)}
                                   className="mr-2 text-red-600 hover:text-red-800 p-2"
+                                  title="Delete Student"
                                 >
                                   <Trash2 size={16} />
                                 </button>
-                                {student.status === 'active' && (
+                                {/* UPDATED: Show deactivation button for active and expired students */}
+                                {(student.status === 'active' || student.status === 'expired') && (
                                   <button
                                     onClick={() => handleDeactivate(student.id)}
                                     className="text-yellow-600 hover:text-yellow-800 p-2"
+                                    title="Deactivate Student"
                                   >
                                     <Ban size={16} />
                                   </button>

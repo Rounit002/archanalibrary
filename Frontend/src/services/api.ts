@@ -6,7 +6,7 @@ interface NewUserData {
   role: 'admin' | 'staff';
 }
 
-interface Branch {
+export interface Branch {
   id: number;
   name: string;
   code?: string | null;
@@ -37,7 +37,7 @@ interface Student {
   branchName?: string;
   membershipStart: string;
   membershipEnd: string;
-  status: 'active' | 'expired' | 'deactivated'; // <-- Change this line
+  status: 'active' | 'expired' | 'deactivated'; // This is correct
   totalFee: number;
   amountPaid: number;
   dueAmount: number;
@@ -175,7 +175,8 @@ apiClient.interceptors.response.use(
       window.location.href = '/login';
     } else if (!error.response) {
       console.error('Network error - please check your connection:', error.message);
-      alert('Unable to connect to the server. Please check your network.');
+      // Avoid using alert for better user experience
+      // alert('Unable to connect to the server. Please check your network.');
     }
     const errorData = error.response?.data || { message: error.message };
     console.error('API Error (Axios Interceptor - Response Error):', JSON.stringify(errorData, null, 2));
