@@ -11,18 +11,9 @@ import ExpiringMemberships from '../components/ExpiringMemberships';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
-// Define the StatCardProps interface to match usage in StatCard component
-interface StatCardProps {
-  title: string;
-  value: number;
-  icon: React.ReactNode;
-  iconBgColor: string;
-  arrowIcon: React.ReactNode;
-}
-
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
-  // Safely handle useAuth to avoid errors if context is not provided
+
   let user = null;
   try {
     const authContext = useAuth();
@@ -34,10 +25,10 @@ const Dashboard: React.FC = () => {
     console.error('Auth context error:', error);
     toast.error('Authentication error. Please log in again.');
     navigate('/login');
-    return null; // Prevent rendering if auth fails
+    return null;
   }
 
-  const [updateTrigger, setUpdateTrigger] = useState(0); // Use a counter instead of boolean for more reliable updates
+  const [updateTrigger, setUpdateTrigger] = useState(0);
   const [studentStats, setStudentStats] = useState({ totalStudents: 0, activeStudents: 0, expiredMemberships: 0 });
   const [financialStats, setFinancialStats] = useState({ totalCollection: 0, totalDue: 0, totalExpense: 0, profitLoss: 0 });
   const [showAddForm, setShowAddForm] = useState(false);
@@ -60,16 +51,18 @@ const Dashboard: React.FC = () => {
 
   const fetchStats = async () => {
     try {
-      const [totalStudentsResp, activeStudentsResp, expiredMembershipsResp] = await Promise.all([
-        api.getTotalStudentsCount(selectedBranchId ?? undefined).catch(() => 0),
+      const [activeStudentsResp, expiredMembershipsResp] = await Promise.all([
         api.getActiveStudentsCount(selectedBranchId ?? undefined).catch(() => 0),
         api.getExpiredMembershipsCount(selectedBranchId ?? undefined).catch(() => 0),
       ]);
 
+      const activeStudents = Number(activeStudentsResp) || 0;
+      const expiredMemberships = Number(expiredMembershipsResp) || 0;
+
       setStudentStats({
-        totalStudents: Number(totalStudentsResp) || 0,
-        activeStudents: Number(activeStudentsResp) || 0,
-        expiredMemberships: Number(expiredMembershipsResp) || 0,
+        totalStudents: activeStudents + expiredMemberships, // ✅ Only active + expired
+        activeStudents,
+        expiredMemberships,
       });
 
       const financialResponse = await api.getDashboardStats(
@@ -107,13 +100,11 @@ const Dashboard: React.FC = () => {
 
   const canManageStudents = user && (user.role === 'admin' || user.role === 'staff');
 
-  // Function to trigger a refresh of the dashboard data
   const handleRefresh = () => {
     setUpdateTrigger(prev => prev + 1);
     setShowAddForm(false);
   };
 
-  // Early return if user is not authenticated
   if (!user) {
     return null;
   }
@@ -230,7 +221,7 @@ const Dashboard: React.FC = () => {
                     <button
                       onClick={() => {
                         setShowAddForm(false);
-                        handleRefresh(); // Trigger refresh on cancel
+                        handleRefresh();
                       }}
                       className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 transition duration-200"
                     >

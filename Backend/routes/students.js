@@ -842,77 +842,66 @@ router.get('/expired', checkAdminOrStaff, async (req, res) => {
 
   // PUT deactivate a student
   router.put('/:id/deactivate', checkAdmin, async (req, res) => {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-      const id = parseInt(req.params.id, 10);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const id = parseInt(req.params.id, 10);
 
-      const updatedStudentResult = await client.query(
-        `UPDATE students
-         SET status = 'deactivated',
-             membership_end = CURRENT_DATE,
-             remark = COALESCE(remark, '') || ' [Deactivated on ' || NOW()::date || ']'
-         WHERE id = $1
-         RETURNING *`,
-        [id]
-      );
+    const updatedStudentResult = await client.query(
+      `UPDATE students
+       SET status = 'deactivated',
+           membership_end = CURRENT_DATE,
+           remark = COALESCE(remark, '') || ' [Deactivated on ' || NOW()::date || ']'
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
 
-      if (updatedStudentResult.rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ message: 'Student not found' });
-      }
-
-      const deactivatedStudent = updatedStudentResult.rows[0];
-
-      await client.query('DELETE FROM seat_assignments WHERE student_id = $1', [id]);
-      
-      const studentDataForHistory = deactivatedStudent;
-
-      const historyInsert = await client.query(
-        `INSERT INTO student_membership_history (
-          student_id, name, email, phone, address,
-          membership_start, membership_end, status,
-          total_fee, amount_paid, due_amount,
-          cash, online, security_money, remark,
-          seat_id, branch_id,
-          changed_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())`,
-        [
-          studentDataForHistory.id, studentDataForHistory.name, studentDataForHistory.email, studentDataForHistory.phone, studentDataForHistory.address,
-          studentDataForHistory.membership_start, new Date().toISOString().split('T')[0], 'deactivated',
-          studentDataForHistory.total_fee, studentDataForHistory.amount_paid, studentDataForHistory.due_amount,
-          studentDataForHistory.cash, studentDataForHistory.online, studentDataForHistory.security_money, studentDataForHistory.remark || '',
-          null, studentDataForHistory.branch_id
-        ]
-      );
-
-      await client.query('DELETE FROM membership_shift_assignments WHERE membership_id IN (SELECT id FROM student_membership_history WHERE student_id = $1)', [id]);
-
-      await client.query('COMMIT');
-
-      res.json({
-        message: 'Student deactivated successfully',
-        student: {
-          ...deactivatedStudent,
-          status: 'deactivated',
-          membership_end: new Date().toISOString().split('T')[0],
-          total_fee: parseFloat(deactivatedStudent.total_fee || 0),
-          amount_paid: parseFloat(deactivatedStudent.amount_paid || 0),
-          due_amount: parseFloat(deactivatedStudent.due_amount || 0),
-          cash: parseFloat(deactivatedStudent.cash || 0),
-          online: parseFloat(deactivatedStudent.online || 0),
-          security_money: parseFloat(deactivatedStudent.security_money || 0),
-          remark: deactivatedStudent.remark || '',
-        }
-      });
-    } catch (err) {
+    if (updatedStudentResult.rows.length === 0) {
       await client.query('ROLLBACK');
-      console.error('Error deactivating student:', err.stack);
-      res.status(500).json({ message: 'Server error deactivating student', error: err.message });
-    } finally {
-      client.release();
+      return res.status(404).json({ message: 'Student not found' });
     }
-  });
+
+    const deactivatedStudent = updatedStudentResult.rows[0];
+
+    // Remove seat assignment for the student
+    await client.query('DELETE FROM seat_assignments WHERE student_id = $1', [id]);
+
+    // Remove membership shift assignments
+    await client.query(
+      `DELETE FROM membership_shift_assignments 
+       WHERE membership_id IN (
+         SELECT id FROM student_membership_history WHERE student_id = $1
+       )`,
+      [id]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      message: 'Student deactivated successfully',
+      student: {
+        ...deactivatedStudent,
+        status: 'deactivated',
+        membership_end: new Date().toISOString().split('T')[0],
+        total_fee: parseFloat(deactivatedStudent.total_fee || 0),
+        amount_paid: parseFloat(deactivatedStudent.amount_paid || 0),
+        due_amount: parseFloat(deactivatedStudent.due_amount || 0),
+        cash: parseFloat(deactivatedStudent.cash || 0),
+        online: parseFloat(deactivatedStudent.online || 0),
+        security_money: parseFloat(deactivatedStudent.security_money || 0),
+        remark: deactivatedStudent.remark || '',
+      }
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error deactivating student:', err.stack);
+    res.status(500).json({ message: 'Server error deactivating student', error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
 
   // PUT activate a student
   router.put('/:id/activate', checkAdmin, async (req, res) => {

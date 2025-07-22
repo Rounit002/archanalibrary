@@ -38,7 +38,6 @@ const AllStudents = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const navigate = useNavigate();
 
-  // Fetch branches on mount
   useEffect(() => {
     const fetchBranches = async () => {
       try {
@@ -52,7 +51,6 @@ const AllStudents = () => {
     fetchBranches();
   }, []);
 
-  // Fetch students whenever selectedBranchId, fromDate, or toDate changes
   useEffect(() => {
     const fetchStudents = async () => {
       try {
@@ -60,7 +58,7 @@ const AllStudents = () => {
         const response = await api.getStudents(fromDate || undefined, toDate || undefined, selectedBranchId);
         const updatedStudents = response.students.map((student: any) => ({
           ...student,
-          createdAt: student.createdAt || 'N/A', // Keep fallback for safety
+          createdAt: student.createdAt || 'N/A',
         }));
         setStudents(updatedStudents);
       } catch (error: any) {
@@ -73,7 +71,6 @@ const AllStudents = () => {
     fetchStudents();
   }, [selectedBranchId, fromDate, toDate]);
 
-  // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, selectedBranchId, fromDate, toDate]);
@@ -82,20 +79,20 @@ const AllStudents = () => {
     setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
   };
 
-  // Sort students based on createdAt with validation
   const sortedStudents = [...students].sort((a, b) => {
     const dateA = new Date(a.createdAt);
     const dateB = new Date(b.createdAt);
-    // Fallback for any invalid date strings
     const timeA = isNaN(dateA.getTime()) ? 0 : dateA.getTime();
     const timeB = isNaN(dateB.getTime()) ? 0 : dateB.getTime();
     return sortDirection === 'asc' ? timeA - timeB : timeB - timeA;
   });
 
-  const filteredStudents = sortedStudents.filter((student: Student) =>
-    (student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-     student.phone.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredStudents = sortedStudents
+    .filter(student => student.status === 'active' || student.status === 'expired') // ✅ NEW: only active or expired
+    .filter(student =>
+      student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      student.phone.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   const indexOfLastStudent = currentPage * studentsPerPage;
   const indexOfFirstStudent = indexOfLastStudent - studentsPerPage;
@@ -103,11 +100,10 @@ const AllStudents = () => {
   const totalPages = Math.ceil(filteredStudents.length / studentsPerPage);
 
   const handleDelete = async (id: number) => {
-    // We use a custom modal or confirmation dialog instead of window.confirm
     if (confirm('Are you sure you want to delete this student?')) {
       try {
         await api.deleteStudent(id);
-        setStudents(students.filter((student) => student.id !== id));
+        setStudents(students.filter(student => student.id !== id));
         toast.success('Student deleted successfully');
       } catch (error: any) {
         console.error('Failed to delete student:', error.message);
@@ -121,27 +117,23 @@ const AllStudents = () => {
   };
 
   const handleDeactivate = async (id: number) => {
-    // We use a custom modal or confirmation dialog instead of window.confirm
     if (confirm('Are you sure you want to deactivate this student? This will remove their seat and hide them from active lists.')) {
       try {
         await api.deactivateStudent(id);
         toast.success('Student deactivated successfully');
-        // Re-fetch the student list to reflect the change
         const response = await api.getStudents(fromDate || undefined, toDate || undefined, selectedBranchId);
         const updatedStudents = response.students.map((student: any) => ({
-            ...student,
-            createdAt: student.createdAt || 'N/A',
+          ...student,
+          createdAt: student.createdAt || 'N/A',
         }));
         setStudents(updatedStudents);
-      } catch (error: any)
-      {
+      } catch (error: any) {
         console.error('Failed to deactivate student:', error.message);
         toast.error(`Failed to deactivate student: ${error.message}`);
       }
     }
   };
 
-  // Find the name of the selected branch for display
   const selectedBranchName = selectedBranchId
     ? branches.find(branch => branch.id === selectedBranchId)?.name
     : null;
@@ -155,7 +147,7 @@ const AllStudents = () => {
           <div className="max-w-7xl mx-auto">
             <div className="mb-6">
               <h1 className="text-2xl font-bold text-gray-800">All Students</h1>
-              <p className="text-gray-500">Manage all your students (Active, Expired, Deactivated)</p>
+              <p className="text-gray-500">Manage all your students (Active, Expired)</p>
             </div>
             <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-gray-200 flex flex-col md:flex-row items-start md:items-center justify-between space-y-2 md:space-y-0">
@@ -219,7 +211,7 @@ const AllStudents = () => {
                     ) : fromDate && toDate ? (
                       <p>Showing students added from {fromDate} to {toDate}</p>
                     ) : (
-                      <p>Showing all students</p>
+                      <p>Showing active and expired students</p>
                     )}
                   </div>
                   <div className="overflow-x-auto">
@@ -254,7 +246,6 @@ const AllStudents = () => {
                                   className={`px-2 py-1 rounded-full text-xs font-medium ${
                                     student.status === 'active' ? 'bg-green-100 text-green-800' :
                                     student.status === 'expired' ? 'bg-red-100 text-red-800' :
-                                    student.status === 'deactivated' ? 'bg-yellow-100 text-yellow-800' :
                                     'bg-gray-100 text-gray-800'
                                   }`}
                                 >
@@ -279,7 +270,6 @@ const AllStudents = () => {
                                 >
                                   <Trash2 size={16} />
                                 </button>
-                                {/* UPDATED: Show deactivation button for active and expired students */}
                                 {(student.status === 'active' || student.status === 'expired') && (
                                   <button
                                     onClick={() => handleDeactivate(student.id)}
