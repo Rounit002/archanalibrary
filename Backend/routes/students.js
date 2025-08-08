@@ -552,8 +552,7 @@ router.get('/expired', checkAdminOrStaff, async (req, res) => {
                membership_start = $5, membership_end = $6, status = $7,
                total_fee = $8, amount_paid = $9, due_amount = $10,
                cash = $11, online = $12, security_money = $13, remark = $14,
-               seat_id = $15, branch_id = $16,
-               changed_at = NOW()
+               seat_id = $15, branch_id = $16
            WHERE id = $17`,
           [
             name, email, phone, address,
